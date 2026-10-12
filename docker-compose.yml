@@ -17,6 +17,8 @@ services:
 
 
   api:
+    image: 103487/todo-api:v1.0
+    container_name: todo-api
     build: ./todo-api
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
@@ -33,11 +35,14 @@ services:
       MAIL_PASSWORD: ${MAIL_PASSWORD}
       MAIL_FROM: ${MAIL_FROM}
       LOGIN_OTP_ENABLED: ${LOGIN_OTP_ENABLED:-true}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       # Container không có TTY nên Spring tự tắt màu; bật lại để `docker compose logs` có màu
       SPRING_OUTPUT_ANSI_ENABLED: always
 
 
   ui:
+    image: 103487/todo-ui:v1.0
+    container_name: todo-ui
     build: ./todo-ui
 
   nginx:

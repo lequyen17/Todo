@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { Alert, AuthCard, Field } from '../components/Form';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 import { saveLoginChallenge } from './flowStorage';
 
 export default function LoginPage() {
@@ -71,6 +72,7 @@ export default function LoginPage() {
           {submitting ? 'Sending code...' : 'Continue'}
         </button>
       </form>
+      <GoogleSignInButton text="signin_with" />
     </AuthCard>
   );
 }

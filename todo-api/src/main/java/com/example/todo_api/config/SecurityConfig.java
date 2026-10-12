@@ -33,6 +33,7 @@ public class SecurityConfig {
                                 "/api/auth/login", "/api/auth/login/**",
                                 "/api/auth/refresh", "/api/auth/logout",
                                 "/api/auth/forgot-password", "/api/auth/reset-password",
+                                "/api/auth/google", "/api/auth/google/**",
                                 "/api/docs/**", "/api/swagger-ui/**", "/api/swagger-ui.html",
                                 "/error")
                         .permitAll()

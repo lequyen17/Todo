@@ -21,7 +21,10 @@ import com.example.todo_api.core.security.JwtService;
 import com.example.todo_api.core.utils.Tokens;
 import com.example.todo_api.infrastructure.cache.RateLimiter;
 import com.example.todo_api.infrastructure.email.MailService;
+import com.example.todo_api.infrastructure.google.GoogleTokenVerifier;
+import com.example.todo_api.infrastructure.google.GoogleTokenVerifier.GoogleProfile;
 import com.example.todo_api.modules.auth.dto.ChangePasswordRequest;
+import com.example.todo_api.modules.auth.dto.GoogleConfigResponse;
 import com.example.todo_api.modules.auth.dto.LoginChallengeResponse;
 import com.example.todo_api.modules.auth.dto.LoginRequest;
 import com.example.todo_api.modules.auth.dto.LoginResponse;
@@ -29,7 +32,9 @@ import com.example.todo_api.modules.auth.dto.RegisterRequest;
 import com.example.todo_api.modules.auth.dto.ResetPasswordRequest;
 import com.example.todo_api.modules.auth.dto.TokenResponse;
 import com.example.todo_api.modules.auth.entity.RefreshToken;
+import com.example.todo_api.modules.auth.entity.UserIdentity;
 import com.example.todo_api.modules.auth.repository.RefreshTokenRepository;
+import com.example.todo_api.modules.auth.repository.UserIdentityRepository;
 import com.example.todo_api.modules.users.entity.User;
 import com.example.todo_api.modules.users.entity.UserStatus;
 import com.example.todo_api.modules.users.repository.UserRepository;
@@ -44,6 +49,7 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final UserIdentityRepository identityRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AccessTokenBlacklist blacklist;
@@ -51,14 +57,17 @@ public class AuthService {
     private final MailService mailService;
     private final RateLimiter rateLimiter;
     private final StringRedisTemplate redis;
+    private final GoogleTokenVerifier googleVerifier;
     private final AppProperties props;
 
     public AuthService(UserRepository userRepository, RefreshTokenRepository refreshTokenRepository,
-            PasswordEncoder passwordEncoder, JwtService jwtService, AccessTokenBlacklist blacklist,
-            OtpService otpService, MailService mailService, RateLimiter rateLimiter,
-            StringRedisTemplate redis, AppProperties props) {
+            UserIdentityRepository identityRepository, PasswordEncoder passwordEncoder, JwtService jwtService,
+            AccessTokenBlacklist blacklist, OtpService otpService, MailService mailService,
+            RateLimiter rateLimiter, StringRedisTemplate redis, GoogleTokenVerifier googleVerifier,
+            AppProperties props) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
+        this.identityRepository = identityRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.blacklist = blacklist;
@@ -66,6 +75,7 @@ public class AuthService {
         this.mailService = mailService;
         this.rateLimiter = rateLimiter;
         this.redis = redis;
+        this.googleVerifier = googleVerifier;
         this.props = props;
     }
 
@@ -190,6 +200,74 @@ public class AuthService {
         return issueTokens(user, UUID.randomUUID(), now);
     }
 
+    // ---------------------------------------------------------------- Đăng nhập Google
+
+    /**
+     * Google đã xác thực người dùng nên bỏ qua bước OTP email.
+     * Thứ tự tìm tài khoản: theo Google sub đã liên kết -> theo email (tự liên kết) -> tạo tài khoản mới.
+     */
+    @Transactional
+    public TokenResponse loginWithGoogle(String credential, String ip) {
+        rateLimiter.check(ip, "login-google", 20);
+        GoogleProfile profile = googleVerifier.verify(credential);
+        Instant now = Instant.now();
+
+        User user = identityRepository.findByProviderAndProviderUserId(UserIdentity.Provider.GOOGLE, profile.sub())
+                .map(identity -> {
+                    identity.setProviderEmail(profile.email());
+                    return identity.getUser();
+                })
+                .orElseGet(() -> linkOrCreateGoogleUser(profile, now));
+        ensureActive(user);
+
+        if (user.getAvatarUrl() == null && profile.picture() != null && profile.picture().length() <= 500) {
+            user.setAvatarUrl(profile.picture());
+        }
+        user.setLastLoginAt(now);
+        userRepository.save(user);
+        return issueTokens(user, UUID.randomUUID(), now);
+    }
+
+    public GoogleConfigResponse googleConfig() {
+        AppProperties.Google google = props.google();
+        return new GoogleConfigResponse(google.enabled(), google.enabled() ? google.clientId() : null);
+    }
+
+    private User linkOrCreateGoogleUser(GoogleProfile profile, Instant now) {
+        // Chỉ tin email Google đã xác minh, nếu không ai cũng có thể chiếm tài khoản theo email
+        if (profile.email() == null || !profile.emailVerified()) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "GOOGLE_EMAIL_UNVERIFIED",
+                    "Your Google account email is not verified");
+        }
+        String email = normalizeEmail(profile.email());
+        User user = userRepository.findByEmail(email).orElse(null);
+        if (user == null) {
+            user = new User();
+            user.setEmail(email);
+            user.setDisplayName(googleDisplayName(profile, email));
+            user.setEmailVerifiedAt(now);
+            userRepository.save(user);
+        } else {
+            if (identityRepository.existsByUserIdAndProvider(user.getId(), UserIdentity.Provider.GOOGLE)) {
+                throw new ApiException(HttpStatus.CONFLICT, "GOOGLE_ACCOUNT_MISMATCH",
+                        "This email is already linked to a different Google account");
+            }
+            if (user.getEmailVerifiedAt() == null) {
+                user.setEmailVerifiedAt(now);
+            }
+        }
+        identityRepository.save(new UserIdentity(user, UserIdentity.Provider.GOOGLE, profile.sub(), profile.email()));
+        return user;
+    }
+
+    private static String googleDisplayName(GoogleProfile profile, String email) {
+        String name = profile.name() == null ? "" : profile.name().trim();
+        if (name.isEmpty()) {
+            name = email.substring(0, email.indexOf('@'));
+        }
+        return name.length() > 50 ? name.substring(0, 50) : name;
+    }
+
     // ---------------------------------------------------------------- Refresh token rotation
 
     /**
@@ -250,6 +328,10 @@ public class AuthService {
         rateLimiter.check("user-" + principal.user().getId(), "change-password", 5);
         User user = userRepository.findById(principal.user().getId())
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Authentication required"));
+        if (user.getPassword() == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "PASSWORD_NOT_SET",
+                    "This account signs in with Google and has no password yet. Use Forgot password to set one");
+        }
         if (!passwordEncoder.matches(req.currentPassword(), user.getPassword())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_CURRENT_PASSWORD", "Current password is incorrect");
         }

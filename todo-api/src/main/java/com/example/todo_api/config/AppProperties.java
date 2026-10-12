@@ -3,6 +3,7 @@ package com.example.todo_api.config;
 import java.time.Duration;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 
 @ConfigurationProperties(prefix = "app")
 public record AppProperties(
@@ -11,7 +12,8 @@ public record AppProperties(
         Jwt jwt,
         Otp otp,
         PasswordReset passwordReset,
-        Login login) {
+        Login login,
+        @DefaultValue Google google) {
 
     public record Mail(String from, boolean enabled) {
     }
@@ -27,5 +29,13 @@ public record AppProperties(
 
     /** otpEnabled = false: đăng nhập chỉ cần mật khẩu, bỏ bước OTP email. */
     public record Login(int maxFailures, Duration lockDuration, boolean otpEnabled) {
+    }
+
+    /** clientId rỗng = tắt đăng nhập Google. */
+    public record Google(String clientId) {
+
+        public boolean enabled() {
+            return clientId != null && !clientId.isBlank();
+        }
     }
 }

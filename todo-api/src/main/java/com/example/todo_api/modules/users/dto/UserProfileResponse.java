@@ -11,6 +11,7 @@ public record UserProfileResponse(
         String displayName,
         String avatarUrl,
         Role role,
+        boolean hasPassword,
         Instant emailVerifiedAt,
         Instant lastLoginAt,
         Instant createdAt) {
@@ -22,6 +23,7 @@ public record UserProfileResponse(
                 user.getDisplayName(),
                 user.getAvatarUrl(),
                 user.getRole(),
+                user.getPassword() != null,
                 user.getEmailVerifiedAt(),
                 user.getLastLoginAt(),
                 user.getCreatedAt());

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { Alert, Field } from '../components/Form';
@@ -79,6 +80,8 @@ function ChangePasswordForm() {
 }
 
 export default function SettingsPage() {
+  const { user } = useAuth();
+
   return (
     <div className="page">
       <div className="page-header">
@@ -95,10 +98,20 @@ export default function SettingsPage() {
 
         <section className="card">
           <h2 className="card-title">Change password</h2>
-          <p className="muted card-description">
-            After changing your password, you will be signed out on all other devices.
-          </p>
-          <ChangePasswordForm />
+          {user.hasPassword ? (
+            <>
+              <p className="muted card-description">
+                After changing your password, you will be signed out on all other devices.
+              </p>
+              <ChangePasswordForm />
+            </>
+          ) : (
+            // Tài khoản tạo bằng Google chưa có mật khẩu -> đặt qua luồng quên mật khẩu (link gửi về email)
+            <p className="muted card-description">
+              Your account signs in with Google and has no password yet. To also sign in with email and
+              password, <Link to="/forgot-password">set a password</Link> via a link sent to your email.
+            </p>
+          )}
         </section>
       </div>
     </div>

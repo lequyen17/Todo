@@ -185,6 +185,40 @@ a:hover {
   width: 100%;
 }
 
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0 16px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.google-signin-button {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+}
+
+.google-signin-button[aria-busy='true'] {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.google-signin-status {
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: 0.9rem;
+}
+
 .card-footer {
   margin-top: 20px;
   text-align: center;

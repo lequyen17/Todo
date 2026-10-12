@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { Alert, AuthCard, Field } from '../components/Form';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 import { savePendingRegisterEmail } from './flowStorage';
 
 export default function RegisterPage() {
@@ -80,6 +81,7 @@ export default function RegisterPage() {
           {submitting ? 'Sending code...' : 'Sign up'}
         </button>
       </form>
+      <GoogleSignInButton text="signup_with" />
     </AuthCard>
   );
 }
