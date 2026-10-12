@@ -12,6 +12,13 @@
 
 Request vào `http://<host>/api/...` được chuyển sang `api`, còn lại được chuyển sang `ui`.
 
+## Dùng thử không cần cài đặt
+
+Bản demo: **https://navigate-backward-sage.ngrok-free.dev**
+
+- Demo chạy trên máy cá nhân của tác giả và được mở ra Internet qua ngrok, nên **chỉ truy cập được khi máy đó đang bật**. Nếu gặp lỗi `ERR_NGROK_3200` (endpoint offline) thì máy đang tắt, hãy thử lại sau hoặc tự chạy theo hướng dẫn bên dưới.
+- Lần đầu vào, ngrok hiện trang cảnh báo "You are about to visit...". Bấm **Visit Site** để vào ứng dụng.
+
 ## Yêu cầu
 
 - Docker và Docker Compose v2 (`docker compose version`)
@@ -104,6 +111,23 @@ docker compose up -d --no-build
 ```
 
 Schema database được tạo và cập nhật tự động khi `api` khởi động, không cần chạy migration bằng tay.
+
+## Chia sẻ ra Internet bằng ngrok
+
+Bản demo ở đầu README được mở ra Internet theo cách này. Nó dùng được khi máy chạy Docker không có IP public hay tên miền.
+
+1. Cài [ngrok](https://ngrok.com/download) rồi đăng nhập: `ngrok config add-authtoken <token>`.
+2. Lấy tên miền miễn phí cố định ở [Dashboard → Domains](https://dashboard.ngrok.com/domains). Nếu không có tên miền cố định, mỗi lần chạy ngrok sẽ ra URL mới và bạn phải sửa lại cấu hình ở bước 3.
+3. Cập nhật cấu hình cho đúng URL ngrok:
+   - Trong `.env`: `APP_FRONTEND_URL=https://<ten-mien>.ngrok-free.dev` (dùng để tạo link đặt lại mật khẩu trong email), rồi chạy `docker compose up -d`.
+   - Nếu bật đăng nhập Google: thêm `https://<ten-mien>.ngrok-free.dev` vào **Authorized JavaScript origins** của OAuth client.
+4. Sau khi `docker compose up -d` đã chạy, mở tunnel tới port 80:
+
+   ```bash
+   ngrok http 80 --url=https://<ten-mien>.ngrok-free.dev
+   ```
+
+Ứng dụng chỉ truy cập được khi cả Docker và lệnh `ngrok` đều đang chạy. Tắt cửa sổ ngrok hoặc tắt máy thì link ngừng hoạt động.
 
 ## Xử lý sự cố
 
