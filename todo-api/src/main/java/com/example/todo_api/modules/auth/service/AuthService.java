@@ -1,0 +1,351 @@
+package com.example.todo_api.modules.auth.service;
+
+import java.time.Instant;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.example.todo_api.config.AppProperties;
+import com.example.todo_api.core.exceptions.ApiException;
+import com.example.todo_api.core.security.AccessTokenBlacklist;
+import com.example.todo_api.core.security.AuthPrincipal;
+import com.example.todo_api.core.security.JwtService;
+import com.example.todo_api.core.utils.Tokens;
+import com.example.todo_api.infrastructure.cache.RateLimiter;
+import com.example.todo_api.infrastructure.email.MailService;
+import com.example.todo_api.modules.auth.dto.ChangePasswordRequest;
+import com.example.todo_api.modules.auth.dto.LoginChallengeResponse;
+import com.example.todo_api.modules.auth.dto.LoginRequest;
+import com.example.todo_api.modules.auth.dto.LoginResponse;
+import com.example.todo_api.modules.auth.dto.RegisterRequest;
+import com.example.todo_api.modules.auth.dto.ResetPasswordRequest;
+import com.example.todo_api.modules.auth.dto.TokenResponse;
+import com.example.todo_api.modules.auth.entity.RefreshToken;
+import com.example.todo_api.modules.auth.repository.RefreshTokenRepository;
+import com.example.todo_api.modules.users.entity.User;
+import com.example.todo_api.modules.users.entity.UserStatus;
+import com.example.todo_api.modules.users.repository.UserRepository;
+
+@Service
+public class AuthService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+
+    private static final String PURPOSE_REGISTER = "reg";
+    private static final String PURPOSE_LOGIN = "login";
+
+    private final UserRepository userRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
+    private final AccessTokenBlacklist blacklist;
+    private final OtpService otpService;
+    private final MailService mailService;
+    private final RateLimiter rateLimiter;
+    private final StringRedisTemplate redis;
+    private final AppProperties props;
+
+    public AuthService(UserRepository userRepository, RefreshTokenRepository refreshTokenRepository,
+            PasswordEncoder passwordEncoder, JwtService jwtService, AccessTokenBlacklist blacklist,
+            OtpService otpService, MailService mailService, RateLimiter rateLimiter,
+            StringRedisTemplate redis, AppProperties props) {
+        this.userRepository = userRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtService = jwtService;
+        this.blacklist = blacklist;
+        this.otpService = otpService;
+        this.mailService = mailService;
+        this.rateLimiter = rateLimiter;
+        this.redis = redis;
+        this.props = props;
+    }
+
+    // ---------------------------------------------------------------- Đăng ký
+
+    public void register(RegisterRequest req, String ip) {
+        String email = normalizeEmail(req.email());
+        rateLimiter.check(ip, "register", 10);
+        rateLimiter.check(email, "register", 3);
+        if (userRepository.existsByEmail(email)) {
+            throw new ApiException(HttpStatus.CONFLICT, "EMAIL_EXISTS", "Email is already registered");
+        }
+        otpService.ensureNoCooldown(PURPOSE_REGISTER, email);
+
+        String displayName = req.displayName().trim();
+        String otp = otpService.create(regKey(email), Map.of(
+                "display_name", displayName,
+                "password", passwordEncoder.encode(req.password())));
+        mailService.sendRegistrationOtp(email, displayName, otp);
+        otpService.startCooldown(PURPOSE_REGISTER, email);
+    }
+
+    public void resendRegisterOtp(String rawEmail, String ip) {
+        String email = normalizeEmail(rawEmail);
+        rateLimiter.check(ip, "register-resend", 10);
+        Map<String, String> pending = otpService.find(regKey(email));
+        if (pending.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "REGISTRATION_EXPIRED",
+                    "Registration session has expired, please register again");
+        }
+        otpService.ensureNoCooldown(PURPOSE_REGISTER, email);
+        String otp = otpService.regenerate(regKey(email));
+        mailService.sendRegistrationOtp(email, pending.get("display_name"), otp);
+        otpService.startCooldown(PURPOSE_REGISTER, email);
+    }
+
+    @Transactional
+    public TokenResponse verifyRegister(String rawEmail, String otp, String ip) {
+        String email = normalizeEmail(rawEmail);
+        rateLimiter.check(ip, "register-verify", 20);
+        Map<String, String> pending = otpService.verify(regKey(email), otp);
+        if (userRepository.existsByEmail(email)) {
+            throw new ApiException(HttpStatus.CONFLICT, "EMAIL_EXISTS", "Email is already registered");
+        }
+        Instant now = Instant.now();
+        User user = new User();
+        user.setEmail(email);
+        user.setPassword(pending.get("password"));
+        user.setDisplayName(pending.get("display_name"));
+        user.setEmailVerifiedAt(now);
+        user.setLastLoginAt(now);
+        userRepository.save(user);
+        return issueTokens(user, UUID.randomUUID(), now);
+    }
+
+    // ---------------------------------------------------------------- Đăng nhập (mật khẩu + OTP email)
+
+    public LoginResponse login(LoginRequest req, String ip) {
+        String email = normalizeEmail(req.email());
+        rateLimiter.check(ip, "login", 20);
+
+        String failKey = "login_fail:" + email;
+        String failures = redis.opsForValue().get(failKey);
+        if (failures != null && Integer.parseInt(failures) >= props.login().maxFailures()) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "LOGIN_LOCKED",
+                    "Too many failed attempts, please try again in "
+                            + props.login().lockDuration().toMinutes() + " minutes");
+        }
+
+        User user = userRepository.findByEmail(email).orElse(null);
+        if (user == null || !passwordEncoder.matches(req.password(), user.getPassword())) {
+            Long count = redis.opsForValue().increment(failKey);
+            if (count != null && count == 1) {
+                redis.expire(failKey, props.login().lockDuration());
+            }
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Invalid email or password");
+        }
+        ensureActive(user);
+        redis.delete(failKey);
+
+        if (!props.login().otpEnabled()) {
+            Instant now = Instant.now();
+            user.setLastLoginAt(now);
+            userRepository.save(user);
+            return LoginResponse.authenticated(issueTokens(user, UUID.randomUUID(), now));
+        }
+
+        String challengeId = UUID.randomUUID().toString();
+        String otp = otpService.create(challengeKey(challengeId), Map.of("user_id", user.getId().toString()));
+        mailService.sendLoginOtp(user.getEmail(), user.getDisplayName(), otp);
+        otpService.startCooldown(PURPOSE_LOGIN, challengeId);
+        return LoginResponse.challenge(
+                new LoginChallengeResponse(challengeId, user.getEmail(), props.otp().ttl().toSeconds()));
+    }
+
+    public void resendLoginOtp(String challengeId, String ip) {
+        rateLimiter.check(ip, "login-resend", 10);
+        Map<String, String> challenge = otpService.find(challengeKey(challengeId));
+        if (challenge.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "CHALLENGE_EXPIRED",
+                    "Verification session has expired, please sign in again");
+        }
+        otpService.ensureNoCooldown(PURPOSE_LOGIN, challengeId);
+        User user = userRepository.findById(Long.valueOf(challenge.get("user_id")))
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "CHALLENGE_EXPIRED",
+                        "Verification session has expired, please sign in again"));
+        String otp = otpService.regenerate(challengeKey(challengeId));
+        mailService.sendLoginOtp(user.getEmail(), user.getDisplayName(), otp);
+        otpService.startCooldown(PURPOSE_LOGIN, challengeId);
+    }
+
+    @Transactional
+    public TokenResponse verifyLogin(String challengeId, String otp, String ip) {
+        rateLimiter.check(ip, "login-verify", 20);
+        Map<String, String> challenge = otpService.verify(challengeKey(challengeId), otp);
+        User user = userRepository.findById(Long.valueOf(challenge.get("user_id")))
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS",
+                        "Account not found"));
+        ensureActive(user);
+        Instant now = Instant.now();
+        user.setLastLoginAt(now);
+        return issueTokens(user, UUID.randomUUID(), now);
+    }
+
+    // ---------------------------------------------------------------- Refresh token rotation
+
+    /**
+     * Rotate: token cũ được đánh dấu replaced_by_id + revoked_at, token mới là dòng mới cùng family_id.
+     * Không rollback khi ném lỗi để việc thu hồi family (phát hiện dùng lại token) vẫn được lưu.
+     */
+    @Transactional(noRollbackFor = ApiException.class)
+    public TokenResponse refresh(String tokenValue) {
+        RefreshToken current = refreshTokenRepository.findByTokenForUpdate(tokenValue)
+                .orElseThrow(AuthService::invalidRefreshToken);
+        Instant now = Instant.now();
+
+        if (current.isUsedOrRevoked()) {
+            // Token đã dùng rồi mà vẫn bị gửi lại -> có thể bị đánh cắp, thu hồi cả family
+            refreshTokenRepository.revokeFamily(current.getFamilyId(), now);
+            log.warn("Refresh token reuse detected, revoked family {} of user {}",
+                    current.getFamilyId(), current.getUser().getId());
+            throw invalidRefreshToken();
+        }
+        if (current.isExpired(now)) {
+            throw invalidRefreshToken();
+        }
+        Instant sessionStartedAt = refreshTokenRepository.findFamilyStartedAt(current.getFamilyId());
+        if (!sessionStartedAt.plus(props.jwt().sessionMaxAge()).isAfter(now)) {
+            refreshTokenRepository.revokeFamily(current.getFamilyId(), now);
+            throw invalidRefreshToken();
+        }
+        User user = current.getUser();
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            refreshTokenRepository.revokeFamily(current.getFamilyId(), now);
+            ensureActive(user);
+        }
+
+        RefreshToken next = createRefreshToken(user, current.getFamilyId(), now, sessionStartedAt);
+        current.setReplacedById(next.getId());
+        current.setRevokedAt(now);
+        return buildTokenResponse(user, next);
+    }
+
+    // ---------------------------------------------------------------- Logout
+
+    @Transactional
+    public void logout(AuthPrincipal principal, String refreshToken) {
+        if (principal != null) {
+            blacklist.add(principal.jti(), principal.accessExpiresAt());
+        }
+        if (refreshToken != null && !refreshToken.isBlank()) {
+            refreshTokenRepository.findByToken(refreshToken)
+                    .ifPresent(t -> refreshTokenRepository.revokeFamily(t.getFamilyId(), Instant.now()));
+        }
+    }
+
+    // ---------------------------------------------------------------- Mật khẩu
+
+    /** Đổi mật khẩu -> thu hồi mọi phiên, cấp phiên mới cho thiết bị hiện tại. */
+    @Transactional
+    public TokenResponse changePassword(AuthPrincipal principal, ChangePasswordRequest req) {
+        rateLimiter.check("user-" + principal.user().getId(), "change-password", 5);
+        User user = userRepository.findById(principal.user().getId())
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Authentication required"));
+        if (!passwordEncoder.matches(req.currentPassword(), user.getPassword())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_CURRENT_PASSWORD", "Current password is incorrect");
+        }
+        if (passwordEncoder.matches(req.newPassword(), user.getPassword())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "SAME_PASSWORD", "New password must be different from the current one");
+        }
+        Instant now = Instant.now();
+        updatePassword(user, req.newPassword(), now);
+        blacklist.add(principal.jti(), principal.accessExpiresAt());
+        return issueTokens(user, UUID.randomUUID(), now);
+    }
+
+    /** Luôn trả về thành công để không lộ email nào đã đăng ký. */
+    public void forgotPassword(String rawEmail, String ip) {
+        String email = normalizeEmail(rawEmail);
+        rateLimiter.check(ip, "forgot-password", 10);
+        rateLimiter.check(email, "forgot-password", 3);
+        userRepository.findByEmail(email)
+                .filter(user -> user.getStatus() == UserStatus.ACTIVE)
+                .ifPresent(user -> {
+                    String token = Tokens.random(32);
+                    redis.opsForValue().set(resetKey(token), user.getId().toString(), props.passwordReset().ttl());
+                    String link = props.frontendUrl() + "/reset-password?token=" + token;
+                    mailService.sendPasswordReset(user.getEmail(), user.getDisplayName(), link);
+                });
+    }
+
+    @Transactional
+    public void resetPassword(ResetPasswordRequest req, String ip) {
+        rateLimiter.check(ip, "reset-password", 10);
+        String userId = redis.opsForValue().getAndDelete(resetKey(req.token()));
+        if (userId == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "RESET_TOKEN_INVALID",
+                    "Password reset link is invalid or has expired");
+        }
+        User user = userRepository.findById(Long.valueOf(userId))
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "RESET_TOKEN_INVALID",
+                        "Password reset link is invalid or has expired"));
+        updatePassword(user, req.newPassword(), Instant.now());
+        redis.delete("login_fail:" + user.getEmail());
+    }
+
+    // ---------------------------------------------------------------- Helpers
+
+    private void updatePassword(User user, String rawPassword, Instant now) {
+        user.setPassword(passwordEncoder.encode(rawPassword));
+        user.setPasswordChangedAt(now);
+        userRepository.save(user);
+        refreshTokenRepository.revokeAllForUser(user.getId(), now);
+    }
+
+    private TokenResponse issueTokens(User user, UUID familyId, Instant now) {
+        RefreshToken refreshToken = createRefreshToken(user, familyId, now, now);
+        return buildTokenResponse(user, refreshToken);
+    }
+
+    /** Hạn của token mới không vượt quá hạn tối đa của cả phiên (tính từ token đầu tiên trong family). */
+    private RefreshToken createRefreshToken(User user, UUID familyId, Instant now, Instant sessionStartedAt) {
+        Instant expiresAt = now.plus(props.jwt().refreshTtl());
+        Instant sessionEnd = sessionStartedAt.plus(props.jwt().sessionMaxAge());
+        if (expiresAt.isAfter(sessionEnd)) {
+            expiresAt = sessionEnd;
+        }
+        return refreshTokenRepository.saveAndFlush(new RefreshToken(user, Tokens.random(32), familyId, expiresAt));
+    }
+
+    private TokenResponse buildTokenResponse(User user, RefreshToken refreshToken) {
+        JwtService.AccessToken access = jwtService.issue(user);
+        return new TokenResponse(access.value(), refreshToken.getToken(), "Bearer",
+                props.jwt().accessTtl().toSeconds());
+    }
+
+    private static void ensureActive(User user) {
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "ACCOUNT_LOCKED", "Account is locked");
+        }
+    }
+
+    private static ApiException invalidRefreshToken() {
+        return new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_REFRESH_TOKEN",
+                "Session has expired, please sign in again");
+    }
+
+    private static String normalizeEmail(String email) {
+        return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String regKey(String email) {
+        return "reg_otp:" + email;
+    }
+
+    private static String challengeKey(String challengeId) {
+        return "mfa_challenge:" + challengeId;
+    }
+
+    private static String resetKey(String token) {
+        return "pwd_reset:" + Tokens.sha256(token);
+    }
+}
