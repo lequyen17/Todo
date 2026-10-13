@@ -18,10 +18,10 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
 
     /** Khoá dòng để hai request refresh cùng lúc không rotate cùng một token. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select t from RefreshToken t join fetch t.user where t.token = :token")
-    Optional<RefreshToken> findByTokenForUpdate(@Param("token") String token);
+    @Query("select t from RefreshToken t join fetch t.user where t.token = :tokenHash")
+    Optional<RefreshToken> findByTokenHashForUpdate(@Param("tokenHash") String tokenHash);
 
-    Optional<RefreshToken> findByToken(String token);
+    Optional<RefreshToken> findByTokenHash(String tokenHash);
 
     /** Mốc bắt đầu phiên = created_at của token đầu tiên trong family. */
     @Query("select min(t.createdAt) from RefreshToken t where t.familyId = :familyId")

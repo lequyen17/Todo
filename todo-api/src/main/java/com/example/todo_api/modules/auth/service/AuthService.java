@@ -3,6 +3,7 @@ package com.example.todo_api.modules.auth.service;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -276,8 +277,7 @@ public class AuthService {
      */
     @Transactional(noRollbackFor = ApiException.class)
     public TokenResponse refresh(String tokenValue) {
-        RefreshToken current = refreshTokenRepository.findByTokenForUpdate(tokenValue)
-                .orElseThrow(AuthService::invalidRefreshToken);
+        RefreshToken current = loadRefreshTokenForUpdate(tokenValue);
         Instant now = Instant.now();
 
         if (current.isUsedOrRevoked()) {
@@ -301,8 +301,8 @@ public class AuthService {
             ensureActive(user);
         }
 
-        RefreshToken next = createRefreshToken(user, current.getFamilyId(), now, sessionStartedAt);
-        current.setReplacedById(next.getId());
+        IssuedRefreshToken next = createRefreshToken(user, current.getFamilyId(), now, sessionStartedAt);
+        current.setReplacedById(next.entity().getId());
         current.setRevokedAt(now);
         return buildTokenResponse(user, next);
     }
@@ -315,7 +315,7 @@ public class AuthService {
             blacklist.add(principal.jti(), principal.accessExpiresAt());
         }
         if (refreshToken != null && !refreshToken.isBlank()) {
-            refreshTokenRepository.findByToken(refreshToken)
+            findStoredRefreshToken(refreshToken)
                     .ifPresent(t -> refreshTokenRepository.revokeFamily(t.getFamilyId(), Instant.now()));
         }
     }
@@ -384,24 +384,43 @@ public class AuthService {
     }
 
     private TokenResponse issueTokens(User user, UUID familyId, Instant now) {
-        RefreshToken refreshToken = createRefreshToken(user, familyId, now, now);
-        return buildTokenResponse(user, refreshToken);
+        IssuedRefreshToken issued = createRefreshToken(user, familyId, now, now);
+        return buildTokenResponse(user, issued);
     }
 
     /** Hạn của token mới không vượt quá hạn tối đa của cả phiên (tính từ token đầu tiên trong family). */
-    private RefreshToken createRefreshToken(User user, UUID familyId, Instant now, Instant sessionStartedAt) {
+    private IssuedRefreshToken createRefreshToken(User user, UUID familyId, Instant now, Instant sessionStartedAt) {
         Instant expiresAt = now.plus(props.jwt().refreshTtl());
         Instant sessionEnd = sessionStartedAt.plus(props.jwt().sessionMaxAge());
         if (expiresAt.isAfter(sessionEnd)) {
             expiresAt = sessionEnd;
         }
-        return refreshTokenRepository.saveAndFlush(new RefreshToken(user, Tokens.random(32), familyId, expiresAt));
+        String plain = Tokens.random(32);
+        RefreshToken saved = refreshTokenRepository.saveAndFlush(
+                new RefreshToken(user, hashRefreshToken(plain), familyId, expiresAt));
+        return new IssuedRefreshToken(saved, plain);
     }
 
-    private TokenResponse buildTokenResponse(User user, RefreshToken refreshToken) {
+    private TokenResponse buildTokenResponse(User user, IssuedRefreshToken refreshToken) {
         JwtService.AccessToken access = jwtService.issue(user);
-        return new TokenResponse(access.value(), refreshToken.getToken(), "Bearer",
+        return new TokenResponse(access.value(), refreshToken.plainValue(), "Bearer",
                 props.jwt().accessTtl().toSeconds());
+    }
+
+    private RefreshToken loadRefreshTokenForUpdate(String plainToken) {
+        return refreshTokenRepository.findByTokenHashForUpdate(hashRefreshToken(plainToken))
+                .orElseThrow(AuthService::invalidRefreshToken);
+    }
+
+    private Optional<RefreshToken> findStoredRefreshToken(String plainToken) {
+        return refreshTokenRepository.findByTokenHash(hashRefreshToken(plainToken));
+    }
+
+    private static String hashRefreshToken(String plainToken) {
+        return Tokens.sha256(plainToken);
+    }
+
+    private record IssuedRefreshToken(RefreshToken entity, String plainValue) {
     }
 
     private static void ensureActive(User user) {

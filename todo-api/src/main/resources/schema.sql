@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id        BIGINT       NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    token          VARCHAR(64)  NOT NULL,
+    token          VARCHAR(64)  NOT NULL,          -- SHA-256 hex của refresh token (plain chỉ gửi cho client)
     family_id      UUID         NOT NULL,
     replaced_by_id BIGINT       NULL REFERENCES refresh_tokens (id) ON DELETE SET NULL,
     expires_at     TIMESTAMPTZ  NOT NULL,
