@@ -94,3 +94,10 @@ export const CheckSquareIcon = (props) => (
     <path d="M8 12l3 3 5-6" />
   </Icon>
 );
+
+export const CameraIcon = (props) => (
+  <Icon {...props}>
+    <path d="M4 8h3l2-2h6l2 2h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z" />
+    <circle cx="12" cy="14" r="3" />
+  </Icon>
+);

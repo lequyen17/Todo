@@ -13,7 +13,8 @@ public record AppProperties(
         Otp otp,
         PasswordReset passwordReset,
         Login login,
-        @DefaultValue Google google) {
+        @DefaultValue Google google,
+        @DefaultValue R2 r2) {
 
     public record Mail(String from, boolean enabled) {
     }
@@ -36,6 +37,19 @@ public record AppProperties(
 
         public boolean enabled() {
             return clientId != null && !clientId.isBlank();
+        }
+    }
+
+    /** Thiếu bất kỳ trường bắt buộc nào = tắt upload avatar lên R2. */
+    public record R2(String accountId, String accessKeyId, String secretAccessKey, String bucketName,
+            String publicBaseUrl) {
+
+        public boolean enabled() {
+            return accountId != null && !accountId.isBlank()
+                    && accessKeyId != null && !accessKeyId.isBlank()
+                    && secretAccessKey != null && !secretAccessKey.isBlank()
+                    && bucketName != null && !bucketName.isBlank()
+                    && publicBaseUrl != null && !publicBaseUrl.isBlank();
         }
     }
 }

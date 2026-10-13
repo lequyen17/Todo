@@ -91,3 +91,22 @@ export async function api(path, options = {}) {
   }
   return parse(res);
 }
+
+/** Multipart upload (không set Content-Type để browser gắn boundary). */
+export async function apiUpload(path, formData) {
+  const usedAccessToken = tokenStore.access;
+  const headers = { Accept: 'application/json' };
+  if (tokenStore.access) headers.Authorization = `Bearer ${tokenStore.access}`;
+
+  let res = await fetch(`/api${path}`, { method: 'POST', headers, body: formData });
+
+  if (res.status === 401 && usedAccessToken) {
+    if (await refreshTokens(usedAccessToken)) {
+      if (tokenStore.access) headers.Authorization = `Bearer ${tokenStore.access}`;
+      res = await fetch(`/api${path}`, { method: 'POST', headers, body: formData });
+    } else {
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    }
+  }
+  return parse(res);
+}

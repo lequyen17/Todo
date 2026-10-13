@@ -454,11 +454,79 @@ a:hover {
   margin-top: -48px;
 }
 
+.profile-avatar-edit {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+.profile-avatar-edit:focus-within .profile-avatar-ring {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.profile-avatar-edit:hover .profile-avatar-ring::after {
+  opacity: 1;
+}
+
+.profile-avatar-edit.is-uploading {
+  pointer-events: none;
+  opacity: 0.65;
+}
+
 .profile-avatar-ring {
+  position: relative;
   display: inline-flex;
   padding: 4px;
   border-radius: 50%;
   background: var(--surface);
+}
+
+.profile-avatar-edit .profile-avatar-ring::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.profile-avatar-camera-badge {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  border: 2px solid var(--surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+}
+
+.profile-avatar-alerts {
+  margin-top: 12px;
+  max-width: 420px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .profile-hero-text {

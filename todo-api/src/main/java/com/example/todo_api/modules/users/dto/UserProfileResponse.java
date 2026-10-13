@@ -14,9 +14,10 @@ public record UserProfileResponse(
         boolean hasPassword,
         Instant emailVerifiedAt,
         Instant lastLoginAt,
-        Instant createdAt) {
+        Instant createdAt,
+        boolean avatarUploadEnabled) {
 
-    public static UserProfileResponse from(User user) {
+    public static UserProfileResponse from(User user, boolean avatarUploadEnabled) {
         return new UserProfileResponse(
                 user.getId(),
                 user.getEmail(),
@@ -26,6 +27,7 @@ public record UserProfileResponse(
                 user.getPassword() != null,
                 user.getEmailVerifiedAt(),
                 user.getLastLoginAt(),
-                user.getCreatedAt());
+                user.getCreatedAt(),
+                avatarUploadEnabled);
     }
 }

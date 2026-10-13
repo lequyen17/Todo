@@ -1,8 +1,21 @@
+import { useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { apiUpload } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { Avatar } from '../components/Avatar';
-import { BadgeIcon, CalendarIcon, ClockIcon, MailIcon, ShieldCheckIcon, UserIcon } from '../components/Icons';
+import { Alert } from '../components/Form';
+import {
+  BadgeIcon,
+  CalendarIcon,
+  CameraIcon,
+  ClockIcon,
+  MailIcon,
+  ShieldCheckIcon,
+  UserIcon,
+} from '../components/Icons';
 import { formatDate } from '../utils/format';
+
+const ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
 
 function InfoRow({ icon, label, children }) {
   return (
@@ -17,16 +30,70 @@ function InfoRow({ icon, label, children }) {
 }
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
+  const fileInputRef = useRef(null);
+  const avatarInputId = useId();
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setError('');
+    setMessage('');
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const me = await apiUpload('/users/me/avatar', form);
+      setUser(me);
+      setMessage('Profile photo updated.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const avatarRing = (
+    <div className="profile-avatar-ring">
+      <Avatar user={user} size={96} />
+    </div>
+  );
 
   return (
     <div className="page">
       <section className="card profile-hero">
         <div className="profile-cover" />
         <div className="profile-hero-body">
-          <div className="profile-avatar-ring">
-            <Avatar user={user} size={96} />
-          </div>
+          {user.avatarUploadEnabled ? (
+            <>
+              <input
+                ref={fileInputRef}
+                id={avatarInputId}
+                type="file"
+                accept={ACCEPT}
+                className="visually-hidden"
+                onChange={handleFileChange}
+                disabled={uploading}
+              />
+              <label
+                htmlFor={avatarInputId}
+                className={`profile-avatar-edit${uploading ? ' is-uploading' : ''}`}
+                aria-label="Change profile photo"
+              >
+                {avatarRing}
+                <span className="profile-avatar-camera-badge" aria-hidden="true">
+                  <CameraIcon size={14} />
+                </span>
+              </label>
+            </>
+          ) : (
+            avatarRing
+          )}
           <div className="profile-hero-text">
             <h1>{user.displayName}</h1>
             <p className="muted">{user.email}</p>
@@ -38,6 +105,12 @@ export default function ProfilePage() {
                 </span>
               )}
             </div>
+            {(error || message) && (
+              <div className="profile-avatar-alerts">
+                <Alert>{error}</Alert>
+                <Alert type="success">{message}</Alert>
+              </div>
+            )}
           </div>
         </div>
       </section>

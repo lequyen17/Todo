@@ -12,6 +12,7 @@ import org.springframework.mail.MailException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -35,6 +36,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     ResponseEntity<ErrorResponse> handleUnreadable(HttpMessageNotReadableException e) {
         return ResponseEntity.badRequest().body(new ErrorResponse("BAD_REQUEST", "Malformed request body"));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    ResponseEntity<ErrorResponse> handleMaxUpload(MaxUploadSizeExceededException e) {
+        return ResponseEntity.badRequest()
+                .body(new ErrorResponse("AVATAR_TOO_LARGE", "Image must be 2 MB or smaller"));
     }
 
     @ExceptionHandler(MailException.class)
