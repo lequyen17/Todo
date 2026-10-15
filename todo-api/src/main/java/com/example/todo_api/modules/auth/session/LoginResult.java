@@ -1,5 +1,9 @@
-package com.example.todo_api.modules.auth.dto;
+package com.example.todo_api.modules.auth.session;
 
+import com.example.todo_api.modules.auth.dto.LoginChallengeResponse;
+import com.example.todo_api.modules.auth.dto.LoginResponse;
+
+/** Kết quả /login: body trả cho client + refresh token gốc (null khi còn chờ OTP). Không trả trực tiếp ra JSON. */
 public record LoginResult(LoginResponse body, String refreshTokenPlain) {
 
     public static LoginResult challenge(LoginChallengeResponse challenge) {

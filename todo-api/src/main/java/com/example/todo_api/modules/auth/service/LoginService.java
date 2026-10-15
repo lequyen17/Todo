@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,18 +12,17 @@ import com.example.todo_api.config.AppProperties;
 import com.example.todo_api.core.exceptions.ApiException;
 import com.example.todo_api.infrastructure.cache.RateLimiter;
 import com.example.todo_api.infrastructure.email.MailService;
-import com.example.todo_api.modules.auth.dto.AuthSession;
+import com.example.todo_api.modules.auth.AuthErrorCode;
 import com.example.todo_api.modules.auth.dto.LoginChallengeResponse;
 import com.example.todo_api.modules.auth.dto.LoginRequest;
-import com.example.todo_api.modules.auth.dto.LoginResult;
+import com.example.todo_api.modules.auth.session.AuthSession;
+import com.example.todo_api.modules.auth.session.LoginResult;
 import com.example.todo_api.modules.users.entity.User;
 import com.example.todo_api.modules.users.repository.UserRepository;
 
 /** Đăng nhập bằng mật khẩu, kèm bước OTP email (MFA) khi app.login.otp-enabled = true. */
 @Service
 public class LoginService {
-
-    private static final String PURPOSE = "login";
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -49,66 +47,56 @@ public class LoginService {
     }
 
     public LoginResult login(LoginRequest req, String ip) {
-        String email = AuthRules.normalizeEmail(req.email());
+        String email = User.normalizeEmail(req.email());
         rateLimiter.check(ip, "login", 20);
         loginAttempts.ensureNotLocked(email);
 
         User user = userRepository.findByEmail(email).orElse(null);
         if (user == null || !passwordEncoder.matches(req.password(), user.getPassword())) {
             loginAttempts.recordFailure(email);
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Invalid email or password");
+            throw new ApiException(AuthErrorCode.INVALID_CREDENTIALS);
         }
-        AuthRules.ensureActive(user);
+        user.ensureActive();
         loginAttempts.reset(email);
 
         if (!props.login().otpEnabled()) {
             Instant now = Instant.now();
-            user.setLastLoginAt(now);
+            user.recordLogin(now);
             userRepository.save(user);
             return LoginResult.authenticated(sessionService.start(user, now));
         }
 
         String challengeId = UUID.randomUUID().toString();
-        String otp = otpService.create(key(challengeId), Map.of("user_id", user.getId().toString()));
+        String otp = otpService.create(AuthRedisKeys.loginChallenge(challengeId), Map.of("user_id", user.getId().toString()));
         mailService.sendLoginOtp(user.getEmail(), user.getDisplayName(), otp);
-        otpService.startCooldown(PURPOSE, challengeId);
+        otpService.startCooldown(AuthRedisKeys.PURPOSE_LOGIN, challengeId);
         return LoginResult.challenge(
                 new LoginChallengeResponse(challengeId, user.getEmail(), props.otp().ttl().toSeconds()));
     }
 
     public void resendOtp(String challengeId, String ip) {
         rateLimiter.check(ip, "login-resend", 10);
-        Map<String, String> challenge = otpService.find(key(challengeId));
+        Map<String, String> challenge = otpService.find(AuthRedisKeys.loginChallenge(challengeId));
         if (challenge.isEmpty()) {
-            throw challengeExpired();
+            throw new ApiException(AuthErrorCode.CHALLENGE_EXPIRED);
         }
-        otpService.ensureNoCooldown(PURPOSE, challengeId);
+        otpService.ensureNoCooldown(AuthRedisKeys.PURPOSE_LOGIN, challengeId);
         User user = userRepository.findById(Long.valueOf(challenge.get("user_id")))
-                .orElseThrow(LoginService::challengeExpired);
-        String otp = otpService.regenerate(key(challengeId));
+                .orElseThrow(() -> new ApiException(AuthErrorCode.CHALLENGE_EXPIRED));
+        String otp = otpService.regenerate(AuthRedisKeys.loginChallenge(challengeId));
         mailService.sendLoginOtp(user.getEmail(), user.getDisplayName(), otp);
-        otpService.startCooldown(PURPOSE, challengeId);
+        otpService.startCooldown(AuthRedisKeys.PURPOSE_LOGIN, challengeId);
     }
 
     @Transactional
     public AuthSession verifyOtp(String challengeId, String otp, String ip) {
         rateLimiter.check(ip, "login-verify", 20);
-        Map<String, String> challenge = otpService.verify(key(challengeId), otp);
+        Map<String, String> challenge = otpService.verify(AuthRedisKeys.loginChallenge(challengeId), otp);
         User user = userRepository.findById(Long.valueOf(challenge.get("user_id")))
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS",
-                        "Account not found"));
-        AuthRules.ensureActive(user);
+                .orElseThrow(() -> new ApiException(AuthErrorCode.INVALID_CREDENTIALS));
+        user.ensureActive();
         Instant now = Instant.now();
-        user.setLastLoginAt(now);
+        user.recordLogin(now);
         return sessionService.start(user, now);
-    }
-
-    private static ApiException challengeExpired() {
-        return new ApiException(HttpStatus.BAD_REQUEST, "CHALLENGE_EXPIRED",
-                "Verification session has expired, please sign in again");
-    }
-
-    private static String key(String challengeId) {
-        return "mfa_challenge:" + challengeId;
     }
 }

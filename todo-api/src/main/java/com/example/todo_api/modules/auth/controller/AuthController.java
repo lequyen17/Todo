@@ -15,28 +15,29 @@ import jakarta.validation.Valid;
 
 import com.example.todo_api.core.exceptions.ApiException;
 import com.example.todo_api.core.security.AuthPrincipal;
-import com.example.todo_api.core.security.RefreshTokenCookieService;
 import com.example.todo_api.core.utils.ClientIp;
-import com.example.todo_api.modules.auth.dto.AuthSession;
+import com.example.todo_api.core.web.MessageResponse;
+import com.example.todo_api.modules.auth.AuthErrorCode;
 import com.example.todo_api.modules.auth.dto.ChallengeRequest;
 import com.example.todo_api.modules.auth.dto.ChangePasswordRequest;
 import com.example.todo_api.modules.auth.dto.EmailRequest;
 import com.example.todo_api.modules.auth.dto.GoogleConfigResponse;
 import com.example.todo_api.modules.auth.dto.GoogleLoginRequest;
-import com.example.todo_api.modules.auth.dto.LoginResponse;
 import com.example.todo_api.modules.auth.dto.LoginRequest;
-import com.example.todo_api.modules.auth.dto.LoginResult;
-import com.example.todo_api.modules.auth.dto.MessageResponse;
+import com.example.todo_api.modules.auth.dto.LoginResponse;
 import com.example.todo_api.modules.auth.dto.RegisterRequest;
 import com.example.todo_api.modules.auth.dto.ResetPasswordRequest;
 import com.example.todo_api.modules.auth.dto.TokenResponse;
 import com.example.todo_api.modules.auth.dto.VerifyLoginRequest;
 import com.example.todo_api.modules.auth.dto.VerifyRegisterRequest;
+import com.example.todo_api.modules.auth.security.RefreshTokenCookieService;
 import com.example.todo_api.modules.auth.service.GoogleAuthService;
 import com.example.todo_api.modules.auth.service.LoginService;
 import com.example.todo_api.modules.auth.service.PasswordService;
 import com.example.todo_api.modules.auth.service.RegistrationService;
 import com.example.todo_api.modules.auth.service.SessionService;
+import com.example.todo_api.modules.auth.session.AuthSession;
+import com.example.todo_api.modules.auth.session.LoginResult;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -119,12 +120,12 @@ public class AuthController {
         String refreshToken = refreshCookie.read(request).orElse(null);
         if (refreshToken == null) {
             refreshCookie.clear(response);
-            throw invalidRefreshToken();
+            throw new ApiException(AuthErrorCode.INVALID_REFRESH_TOKEN);
         }
         try {
             return attachRefreshCookie(response, sessionService.refresh(refreshToken));
         } catch (ApiException e) {
-            if ("INVALID_REFRESH_TOKEN".equals(e.getCode())) {
+            if (e.getCode() == AuthErrorCode.INVALID_REFRESH_TOKEN) {
                 refreshCookie.clear(response);
             }
             throw e;
@@ -161,10 +162,5 @@ public class AuthController {
     private TokenResponse attachRefreshCookie(HttpServletResponse response, AuthSession session) {
         refreshCookie.write(response, session.refreshTokenPlain());
         return session.tokens();
-    }
-
-    private static ApiException invalidRefreshToken() {
-        return new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_REFRESH_TOKEN",
-                "Session has expired, please sign in again");
     }
 }

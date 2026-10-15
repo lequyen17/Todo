@@ -1,5 +1,5 @@
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { api } from '../api/client';
+import { authApi } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { AuthCard } from '../components/Form';
 import { OtpForm } from '../components/OtpForm';
@@ -13,13 +13,13 @@ export default function RegisterVerifyPage() {
   if (!email) return <Navigate to="/register" replace />;
 
   const verify = async (otp) => {
-    const tokens = await api('/auth/register/verify', { method: 'POST', body: { email, otp }, auth: false });
+    const tokens = await authApi.verifyRegister(email, otp);
     clearPendingRegisterEmail();
     await signIn(tokens);
     navigate('/profile', { replace: true });
   };
 
-  const resend = () => api('/auth/register/resend', { method: 'POST', body: { email }, auth: false });
+  const resend = () => authApi.resendRegisterOtp(email);
 
   return (
     <AuthCard

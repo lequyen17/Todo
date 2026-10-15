@@ -35,12 +35,16 @@ authChannel?.addEventListener('message', (event) => {
   }
 });
 
+/** Body lỗi là ProblemDetail (RFC 9457): detail, code, fields, traceId. */
 export class ApiError extends Error {
   constructor(status, body) {
-    super(body?.message || 'Something went wrong, please try again');
+    const detail = body?.detail || 'Something went wrong, please try again';
+    // Lỗi server: kèm mã tra cứu để người dùng gửi khi báo lỗi
+    super(status >= 500 && body?.traceId ? `${detail} (ref: ${body.traceId})` : detail);
     this.status = status;
     this.code = body?.code;
     this.fields = body?.fields || {};
+    this.traceId = body?.traceId;
   }
 }
 

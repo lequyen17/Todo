@@ -1,38 +1,21 @@
-import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api } from '../api/client';
+import { authApi } from '../api/auth';
 import { Alert, AuthCard, Field } from '../components/Form';
 import GoogleSignInButton from '../components/GoogleSignInButton';
+import { confirmPasswordMatches, useForm } from '../hooks/useForm';
 import { savePendingRegisterEmail } from './flowStorage';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ displayName: '', email: '', password: '', confirmPassword: '' });
-  const [error, setError] = useState('');
-  const [fieldErrors, setFieldErrors] = useState({});
-  const [submitting, setSubmitting] = useState(false);
+  const { field, handleSubmit, error, submitting } = useForm(
+    { displayName: '', email: '', password: '', confirmPassword: '' },
+    { validate: confirmPasswordMatches('password') },
+  );
 
-  const update = (key) => (e) => setForm({ ...form, [key]: e.target.value });
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setFieldErrors({});
-    if (form.password !== form.confirmPassword) {
-      setFieldErrors({ confirmPassword: 'Passwords do not match' });
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const { confirmPassword, ...body } = form;
-      await api('/auth/register', { method: 'POST', body, auth: false });
-      savePendingRegisterEmail(form.email.trim().toLowerCase());
-      navigate('/register/verify');
-    } catch (err) {
-      setError(err.message);
-      setFieldErrors(err.fields || {});
-      setSubmitting(false);
-    }
+  const register = async (values) => {
+    await authApi.register(values);
+    savePendingRegisterEmail(values.email.trim().toLowerCase());
+    navigate('/register/verify');
   };
 
   return (
@@ -44,39 +27,17 @@ export default function RegisterPage() {
         </>
       }
     >
-      <form onSubmit={handleSubmit} noValidate>
+      <form onSubmit={handleSubmit(register)} noValidate>
         <Alert>{error}</Alert>
+        <Field label="Display name (2-50 characters)" maxLength={50} {...field('displayName')} />
+        <Field label="Email" type="email" autoComplete="email" {...field('email')} />
         <Field
-          label="Display name"
-          maxLength={50}
-          value={form.displayName}
-          onChange={update('displayName')}
-          error={fieldErrors.displayName}
-        />
-        <Field
-          label="Email"
-          type="email"
-          autoComplete="email"
-          value={form.email}
-          onChange={update('email')}
-          error={fieldErrors.email}
-        />
-        <Field
-          label="Password (8-72 characters)"
+          label="Password (8-72 characters, letters and numbers)"
           type="password"
           autoComplete="new-password"
-          value={form.password}
-          onChange={update('password')}
-          error={fieldErrors.password}
+          {...field('password')}
         />
-        <Field
-          label="Confirm password"
-          type="password"
-          autoComplete="new-password"
-          value={form.confirmPassword}
-          onChange={update('confirmPassword')}
-          error={fieldErrors.confirmPassword}
-        />
+        <Field label="Confirm password" type="password" autoComplete="new-password" {...field('confirmPassword')} />
         <button type="submit" className="btn btn-primary" disabled={submitting}>
           {submitting ? 'Sending code...' : 'Sign up'}
         </button>

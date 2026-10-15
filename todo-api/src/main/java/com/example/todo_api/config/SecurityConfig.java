@@ -1,18 +1,16 @@
 package com.example.todo_api.config;
 
-import java.nio.charset.StandardCharsets;
-
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.servlet.HandlerExceptionResolver;
 
 import com.example.todo_api.core.security.JwtAuthFilter;
 
@@ -20,7 +18,8 @@ import com.example.todo_api.core.security.JwtAuthFilter;
 public class SecurityConfig {
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthFilter jwtAuthFilter) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthFilter jwtAuthFilter,
+            @Qualifier("handlerExceptionResolver") HandlerExceptionResolver exceptionResolver) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .httpBasic(basic -> basic.disable())
@@ -38,13 +37,12 @@ public class SecurityConfig {
                                 "/error")
                         .permitAll()
                         .anyRequest().authenticated())
-                .exceptionHandling(ex -> ex.authenticationEntryPoint((request, response, e) -> {
-                    response.setStatus(HttpStatus.UNAUTHORIZED.value());
-                    response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                    response.getWriter().write(
-                            "{\"code\":\"UNAUTHORIZED\",\"message\":\"Authentication required\"}");
-                }))
+                // 401/403 ở tầng filter được chuyển cho GlobalExceptionHandler -> cùng định dạng ProblemDetail
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, e) ->
+                                exceptionResolver.resolveException(request, response, null, e))
+                        .accessDeniedHandler((request, response, e) ->
+                                exceptionResolver.resolveException(request, response, null, e)))
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

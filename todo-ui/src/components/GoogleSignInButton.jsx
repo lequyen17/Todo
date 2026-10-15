@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api/client';
+import { authApi } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { Alert } from './Form';
 
@@ -12,7 +12,7 @@ let scriptPromise;
 // Client id lấy từ backend (GOOGLE_CLIENT_ID), chỉ hỏi một lần cho cả app.
 // Lỗi (vd. api chưa khởi động xong) thì không cache, lần mở trang sau hỏi lại.
 function loadConfig() {
-  configPromise ??= api('/auth/google/config', { auth: false }).catch(() => {
+  configPromise ??= authApi.googleConfig().catch(() => {
     configPromise = undefined;
     return { enabled: false };
   });
@@ -72,7 +72,7 @@ export default function GoogleSignInButton({ text = 'signin_with' }) {
       setError('');
       setSubmitting(true);
       try {
-        const tokens = await api('/auth/google', { method: 'POST', body: { credential }, auth: false });
+        const tokens = await authApi.loginWithGoogle(credential);
         await signIn(tokens);
         navigate('/profile', { replace: true });
       } catch (err) {

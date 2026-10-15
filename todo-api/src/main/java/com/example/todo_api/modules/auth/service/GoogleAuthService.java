@@ -2,19 +2,19 @@ package com.example.todo_api.modules.auth.service;
 
 import java.time.Instant;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.todo_api.config.AppProperties;
 import com.example.todo_api.core.exceptions.ApiException;
 import com.example.todo_api.infrastructure.cache.RateLimiter;
-import com.example.todo_api.infrastructure.google.GoogleTokenVerifier;
 import com.example.todo_api.infrastructure.google.GoogleTokenVerifier.GoogleProfile;
-import com.example.todo_api.modules.auth.dto.AuthSession;
+import com.example.todo_api.infrastructure.google.GoogleTokenVerifier;
+import com.example.todo_api.modules.auth.AuthErrorCode;
 import com.example.todo_api.modules.auth.dto.GoogleConfigResponse;
 import com.example.todo_api.modules.auth.entity.UserIdentity;
 import com.example.todo_api.modules.auth.repository.UserIdentityRepository;
+import com.example.todo_api.modules.auth.session.AuthSession;
 import com.example.todo_api.modules.users.entity.User;
 import com.example.todo_api.modules.users.repository.UserRepository;
 
@@ -52,16 +52,13 @@ public class GoogleAuthService {
 
         User user = identityRepository.findByProviderAndProviderUserId(UserIdentity.Provider.GOOGLE, profile.sub())
                 .map(identity -> {
-                    identity.setProviderEmail(profile.email());
+                    identity.updateProviderEmail(profile.email());
                     return identity.getUser();
                 })
                 .orElseGet(() -> linkOrCreateUser(profile, now));
-        AuthRules.ensureActive(user);
-
-        if (user.getAvatarUrl() == null && profile.picture() != null && profile.picture().length() <= 500) {
-            user.setAvatarUrl(profile.picture());
-        }
-        user.setLastLoginAt(now);
+        user.ensureActive();
+        user.useAvatarIfMissing(profile.picture());
+        user.recordLogin(now);
         userRepository.save(user);
         return sessionService.start(user, now);
     }
@@ -74,35 +71,19 @@ public class GoogleAuthService {
     private User linkOrCreateUser(GoogleProfile profile, Instant now) {
         // Chỉ tin email Google đã xác minh, nếu không ai cũng có thể chiếm tài khoản theo email
         if (profile.email() == null || !profile.emailVerified()) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "GOOGLE_EMAIL_UNVERIFIED",
-                    "Your Google account email is not verified");
+            throw new ApiException(AuthErrorCode.GOOGLE_EMAIL_UNVERIFIED);
         }
-        String email = AuthRules.normalizeEmail(profile.email());
+        String email = User.normalizeEmail(profile.email());
         User user = userRepository.findByEmail(email).orElse(null);
         if (user == null) {
-            user = new User();
-            user.setEmail(email);
-            user.setDisplayName(displayName(profile, email));
-            user.setEmailVerifiedAt(now);
-            userRepository.save(user);
+            user = userRepository.save(User.registerWithGoogle(email, profile.name(), now));
         } else {
             if (identityRepository.existsByUserIdAndProvider(user.getId(), UserIdentity.Provider.GOOGLE)) {
-                throw new ApiException(HttpStatus.CONFLICT, "GOOGLE_ACCOUNT_MISMATCH",
-                        "This email is already linked to a different Google account");
+                throw new ApiException(AuthErrorCode.GOOGLE_ACCOUNT_MISMATCH);
             }
-            if (user.getEmailVerifiedAt() == null) {
-                user.setEmailVerifiedAt(now);
-            }
+            user.markEmailVerified(now);
         }
         identityRepository.save(new UserIdentity(user, UserIdentity.Provider.GOOGLE, profile.sub(), profile.email()));
         return user;
-    }
-
-    private static String displayName(GoogleProfile profile, String email) {
-        String name = profile.name() == null ? "" : profile.name().trim();
-        if (name.isEmpty()) {
-            name = email.substring(0, email.indexOf('@'));
-        }
-        return name.length() > 50 ? name.substring(0, 50) : name;
     }
 }

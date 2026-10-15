@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { api, SESSION_EXPIRED_EVENT, tokenStore, tryRestoreSession } from '../api/client';
+import { authApi } from '../api/auth';
+import { SESSION_EXPIRED_EVENT, tokenStore, tryRestoreSession } from '../api/client';
+import { usersApi } from '../api/users';
 
 const AuthContext = createContext(null);
 
@@ -8,7 +10,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const loadProfile = useCallback(async () => {
-    const me = await api('/users/me');
+    const me = await usersApi.me();
     setUser(me);
     return me;
   }, []);
@@ -45,7 +47,7 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(async () => {
     try {
-      await api('/auth/logout', { method: 'POST' });
+      await authApi.logout();
     } catch {
       // Dù server lỗi vẫn xoá phiên phía client
     }

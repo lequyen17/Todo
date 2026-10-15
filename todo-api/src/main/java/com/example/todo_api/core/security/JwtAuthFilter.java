@@ -19,10 +19,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-import com.example.todo_api.modules.users.entity.User;
-import com.example.todo_api.modules.users.entity.UserStatus;
-import com.example.todo_api.modules.users.repository.UserRepository;
-
 /**
  * Đọc "Authorization: Bearer ..." và gắn principal nếu token hợp lệ.
  * Token không hợp lệ thì bỏ qua, endpoint cần đăng nhập sẽ trả 401.
@@ -30,14 +26,14 @@ import com.example.todo_api.modules.users.repository.UserRepository;
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
 
-    private final JwtService jwtService;
+    private final JwtVerifier jwtVerifier;
     private final AccessTokenBlacklist blacklist;
-    private final UserRepository userRepository;
+    private final AuthAccountLookup accountLookup;
 
-    public JwtAuthFilter(JwtService jwtService, AccessTokenBlacklist blacklist, UserRepository userRepository) {
-        this.jwtService = jwtService;
+    public JwtAuthFilter(JwtVerifier jwtVerifier, AccessTokenBlacklist blacklist, AuthAccountLookup accountLookup) {
+        this.jwtVerifier = jwtVerifier;
         this.blacklist = blacklist;
-        this.userRepository = userRepository;
+        this.accountLookup = accountLookup;
     }
 
     @Override
@@ -53,26 +49,27 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private void authenticate(String token) {
         Claims claims;
         try {
-            claims = jwtService.parse(token);
+            claims = jwtVerifier.parse(token);
         } catch (JwtException | IllegalArgumentException e) {
             return;
         }
         if (blacklist.contains(claims.getId())) {
             return;
         }
-        User user = userRepository.findById(Long.valueOf(claims.getSubject())).orElse(null);
-        if (user == null || user.getStatus() != UserStatus.ACTIVE) {
+        AuthAccount account = accountLookup.findById(Long.valueOf(claims.getSubject())).orElse(null);
+        if (account == null || !account.active()) {
             return;
         }
         // Đổi mật khẩu -> mọi access token phát hành trước đó mất hiệu lực (iat chỉ chính xác tới giây)
         Instant issuedAt = claims.getIssuedAt().toInstant();
-        Instant changedAt = user.getPasswordChangedAt();
+        Instant changedAt = account.passwordChangedAt();
         if (changedAt != null && issuedAt.isBefore(changedAt.truncatedTo(ChronoUnit.SECONDS))) {
             return;
         }
-        AuthPrincipal principal = new AuthPrincipal(user, claims.getId(), claims.getExpiration().toInstant());
+        AuthPrincipal principal = new AuthPrincipal(account.id(), account.email(), account.role(), claims.getId(),
+                claims.getExpiration().toInstant());
         var authentication = new UsernamePasswordAuthenticationToken(
-                principal, null, List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name())));
+                principal, null, List.of(new SimpleGrantedAuthority("ROLE_" + account.role())));
         SecurityContextHolder.getContext().setAuthentication(authentication);
     }
 }

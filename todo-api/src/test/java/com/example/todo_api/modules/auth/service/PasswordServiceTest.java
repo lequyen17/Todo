@@ -23,8 +23,9 @@ import com.example.todo_api.core.exceptions.ApiException;
 import com.example.todo_api.core.security.AuthPrincipal;
 import com.example.todo_api.infrastructure.cache.RateLimiter;
 import com.example.todo_api.infrastructure.email.MailService;
-import com.example.todo_api.modules.auth.dto.AuthSession;
+import com.example.todo_api.modules.auth.AuthErrorCode;
 import com.example.todo_api.modules.auth.dto.ChangePasswordRequest;
+import com.example.todo_api.modules.auth.session.AuthSession;
 import com.example.todo_api.modules.users.entity.User;
 import com.example.todo_api.modules.users.repository.UserRepository;
 
@@ -48,9 +49,8 @@ class PasswordServiceTest {
                 mock(RateLimiter.class), mock(StringRedisTemplate.class), mock(LoginAttemptService.class),
                 sessionService, props);
 
-        user = new User();
-        user.setPassword("hash-of-old");
-        principal = new AuthPrincipal(user, "jti-1", Instant.now().plusSeconds(600));
+        user = User.registerWithPassword("a@example.com", "A", "hash-of-old", Instant.now());
+        principal = new AuthPrincipal(1L, "a@example.com", "USER", "jti-1", Instant.now().plusSeconds(600));
         when(userRepository.findById(any())).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("old-pass", "hash-of-old")).thenReturn(true);
         when(passwordEncoder.encode("new-pass")).thenReturn("hash-of-new");
@@ -73,7 +73,7 @@ class PasswordServiceTest {
     @Test
     void change_wrongCurrentPassword_changesNothing() {
         assertError(() -> service.change(principal, new ChangePasswordRequest("wrong", "new-pass")),
-                "INVALID_CURRENT_PASSWORD");
+                AuthErrorCode.INVALID_CURRENT_PASSWORD);
         assertThat(user.getPassword()).isEqualTo("hash-of-old");
         verifyNoInteractions(sessionService);
     }
@@ -81,19 +81,20 @@ class PasswordServiceTest {
     @Test
     void change_samePassword_isRejected() {
         assertError(() -> service.change(principal, new ChangePasswordRequest("old-pass", "old-pass")),
-                "SAME_PASSWORD");
+                AuthErrorCode.SAME_PASSWORD);
         verify(passwordEncoder, never()).encode(anyString());
     }
 
     @Test
     void change_googleOnlyAccount_mustUseForgotPassword() {
-        user.setPassword(null);
+        User googleUser = User.registerWithGoogle("a@example.com", "A", Instant.now());
+        when(userRepository.findById(any())).thenReturn(Optional.of(googleUser));
 
         assertError(() -> service.change(principal, new ChangePasswordRequest("x", "new-pass")),
-                "PASSWORD_NOT_SET");
+                AuthErrorCode.PASSWORD_NOT_SET);
     }
 
-    private static void assertError(Runnable call, String code) {
+    private static void assertError(Runnable call, AuthErrorCode code) {
         assertThatThrownBy(call::run)
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getCode()).isEqualTo(code));
     }

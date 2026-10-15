@@ -5,11 +5,11 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 import com.example.todo_api.config.AppProperties;
 import com.example.todo_api.core.exceptions.ApiException;
+import com.example.todo_api.infrastructure.IntegrationErrorCode;
 
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -92,8 +92,7 @@ public class R2AvatarStorage {
 
     private void ensureEnabled() {
         if (!enabled()) {
-            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "AVATAR_UPLOAD_DISABLED",
-                    "Avatar upload is not configured");
+            throw new ApiException(IntegrationErrorCode.AVATAR_UPLOAD_DISABLED);
         }
     }
 

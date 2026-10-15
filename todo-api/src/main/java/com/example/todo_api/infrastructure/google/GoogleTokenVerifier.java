@@ -6,7 +6,6 @@ import java.util.function.Predicate;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
@@ -20,6 +19,7 @@ import org.springframework.stereotype.Component;
 
 import com.example.todo_api.config.AppProperties;
 import com.example.todo_api.core.exceptions.ApiException;
+import com.example.todo_api.infrastructure.IntegrationErrorCode;
 
 /**
  * Xác thực ID token (credential) mà Google Identity Services trả cho frontend:
@@ -51,16 +51,14 @@ public class GoogleTokenVerifier {
 
     public GoogleProfile verify(String idToken) {
         if (!props.google().enabled()) {
-            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "GOOGLE_DISABLED",
-                    "Google sign-in is not enabled");
+            throw new ApiException(IntegrationErrorCode.GOOGLE_DISABLED);
         }
         Jwt jwt;
         try {
             jwt = decoder.decode(idToken);
         } catch (JwtException e) {
             log.debug("Rejected Google ID token: {}", e.getMessage());
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_GOOGLE_TOKEN",
-                    "Google sign-in failed, please try again");
+            throw new ApiException(IntegrationErrorCode.INVALID_GOOGLE_TOKEN);
         }
         return new GoogleProfile(
                 jwt.getSubject(),

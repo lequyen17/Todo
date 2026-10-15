@@ -1,29 +1,14 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../api/client';
+import { authApi } from '../api/auth';
 import { Alert, AuthCard, Field } from '../components/Form';
+import { useForm } from '../hooks/useForm';
 
 export default function ForgotPasswordPage() {
-  const [email, setEmail] = useState('');
-  const [error, setError] = useState('');
-  const [fieldErrors, setFieldErrors] = useState({});
-  const [message, setMessage] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const { field, handleSubmit, error, success, submitting } = useForm({ email: '' });
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setFieldErrors({});
-    setSubmitting(true);
-    try {
-      const res = await api('/auth/forgot-password', { method: 'POST', body: { email }, auth: false });
-      setMessage(res.message);
-    } catch (err) {
-      setError(err.message);
-      setFieldErrors(err.fields || {});
-    } finally {
-      setSubmitting(false);
-    }
+  const sendLink = async ({ email }) => {
+    const res = await authApi.forgotPassword(email);
+    return res.message;
   };
 
   return (
@@ -32,19 +17,12 @@ export default function ForgotPasswordPage() {
       subtitle="Enter your registered email and we'll send you a password reset link."
       footer={<Link to="/login">Back to sign in</Link>}
     >
-      {message ? (
-        <Alert type="success">{message}</Alert>
+      {success ? (
+        <Alert type="success">{success}</Alert>
       ) : (
-        <form onSubmit={handleSubmit} noValidate>
+        <form onSubmit={handleSubmit(sendLink)} noValidate>
           <Alert>{error}</Alert>
-          <Field
-            label="Email"
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            error={fieldErrors.email}
-          />
+          <Field label="Email" type="email" autoComplete="email" {...field('email')} />
           <button type="submit" className="btn btn-primary" disabled={submitting}>
             {submitting ? 'Sending...' : 'Send reset link'}
           </button>

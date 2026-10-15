@@ -1,6 +1,7 @@
 package com.example.todo_api.modules.users.entity;
 
 import java.time.Instant;
+import java.util.Locale;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -13,9 +14,20 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
+import com.example.todo_api.core.exceptions.ApiException;
+import com.example.todo_api.modules.users.UserErrorCode;
+
+/**
+ * Tài khoản người dùng. Trạng thái chỉ đổi qua các hành vi có tên (không có setter),
+ * để những thay đổi đi kèm nhau (vd. mật khẩu + passwordChangedAt) không thể bị quên.
+ * Hash mật khẩu do service tính (PasswordEncoder), entity chỉ nhận chuỗi hash.
+ */
 @Entity
 @Table(name = "users")
 public class User {
+
+    public static final int DISPLAY_NAME_MAX_LENGTH = 50;
+    public static final int AVATAR_URL_MAX_LENGTH = 500;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -26,10 +38,10 @@ public class User {
 
     private String password;
 
-    @Column(name = "display_name", nullable = false, length = 50)
+    @Column(name = "display_name", nullable = false, length = DISPLAY_NAME_MAX_LENGTH)
     private String displayName;
 
-    @Column(name = "avatar_url", length = 500)
+    @Column(name = "avatar_url", length = AVATAR_URL_MAX_LENGTH)
     private String avatarUrl;
 
     @Enumerated(EnumType.STRING)
@@ -55,6 +67,100 @@ public class User {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    /** Cho JPA. */
+    protected User() {
+    }
+
+    private User(String email, String displayName, String passwordHash, Instant emailVerifiedAt) {
+        this.email = normalizeEmail(email);
+        this.displayName = displayName;
+        this.password = passwordHash;
+        this.emailVerifiedAt = emailVerifiedAt;
+    }
+
+    // ---------------------------------------------------------------- Tạo tài khoản
+
+    /** Đăng ký bằng email + mật khẩu, sau khi đã xác minh OTP email. */
+    public static User registerWithPassword(String email, String displayName, String passwordHash, Instant now) {
+        return new User(email, truncate(displayName.trim()), passwordHash, now);
+    }
+
+    /** Tạo từ Google (email đã được Google xác minh), chưa có mật khẩu. Tên trống -> dùng phần trước @ của email. */
+    public static User registerWithGoogle(String email, String googleName, Instant now) {
+        String name = googleName == null ? "" : googleName.trim();
+        if (name.isEmpty()) {
+            String normalized = normalizeEmail(email);
+            name = normalized.substring(0, normalized.indexOf('@'));
+        }
+        return new User(email, truncate(name), null, now);
+    }
+
+    public static String normalizeEmail(String email) {
+        return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    // ---------------------------------------------------------------- Trạng thái
+
+    public boolean isActive() {
+        return status == UserStatus.ACTIVE;
+    }
+
+    public void ensureActive() {
+        if (!isActive()) {
+            throw new ApiException(UserErrorCode.ACCOUNT_LOCKED);
+        }
+    }
+
+    public void lock() {
+        status = UserStatus.LOCKED;
+    }
+
+    public void recordLogin(Instant now) {
+        lastLoginAt = now;
+    }
+
+    /** Giữ mốc xác minh cũ nếu đã xác minh trước đó. */
+    public void markEmailVerified(Instant now) {
+        if (emailVerifiedAt == null) {
+            emailVerifiedAt = now;
+        }
+    }
+
+    // ---------------------------------------------------------------- Mật khẩu
+
+    /** Tài khoản tạo bằng Google chưa có mật khẩu cho tới khi đặt qua "quên mật khẩu". */
+    public boolean hasPassword() {
+        return password != null;
+    }
+
+    /** passwordChangedAt làm mọi access token phát hành trước đó mất hiệu lực (xem JwtAuthFilter). */
+    public void changePassword(String newPasswordHash, Instant now) {
+        password = newPasswordHash;
+        passwordChangedAt = now;
+    }
+
+    // ---------------------------------------------------------------- Avatar
+
+    public void changeAvatar(String url) {
+        if (url != null && url.length() > AVATAR_URL_MAX_LENGTH) {
+            throw new ApiException(UserErrorCode.AVATAR_URL_TOO_LONG);
+        }
+        avatarUrl = url;
+    }
+
+    /** Ảnh từ nhà cung cấp đăng nhập (Google): chỉ dùng khi user chưa có avatar, bỏ qua URL quá dài. */
+    public void useAvatarIfMissing(String url) {
+        if (avatarUrl == null && url != null && url.length() <= AVATAR_URL_MAX_LENGTH) {
+            avatarUrl = url;
+        }
+    }
+
+    private static String truncate(String displayName) {
+        return displayName.length() > DISPLAY_NAME_MAX_LENGTH
+                ? displayName.substring(0, DISPLAY_NAME_MAX_LENGTH)
+                : displayName;
+    }
+
     @PrePersist
     void onCreate() {
         createdAt = Instant.now();
@@ -74,72 +180,36 @@ public class User {
         return email;
     }
 
-    public void setEmail(String email) {
-        this.email = email;
-    }
-
     public String getPassword() {
         return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
     }
 
     public String getDisplayName() {
         return displayName;
     }
 
-    public void setDisplayName(String displayName) {
-        this.displayName = displayName;
-    }
-
     public String getAvatarUrl() {
         return avatarUrl;
-    }
-
-    public void setAvatarUrl(String avatarUrl) {
-        this.avatarUrl = avatarUrl;
     }
 
     public Role getRole() {
         return role;
     }
 
-    public void setRole(Role role) {
-        this.role = role;
-    }
-
     public UserStatus getStatus() {
         return status;
-    }
-
-    public void setStatus(UserStatus status) {
-        this.status = status;
     }
 
     public Instant getEmailVerifiedAt() {
         return emailVerifiedAt;
     }
 
-    public void setEmailVerifiedAt(Instant emailVerifiedAt) {
-        this.emailVerifiedAt = emailVerifiedAt;
-    }
-
     public Instant getPasswordChangedAt() {
         return passwordChangedAt;
     }
 
-    public void setPasswordChangedAt(Instant passwordChangedAt) {
-        this.passwordChangedAt = passwordChangedAt;
-    }
-
     public Instant getLastLoginAt() {
         return lastLoginAt;
-    }
-
-    public void setLastLoginAt(Instant lastLoginAt) {
-        this.lastLoginAt = lastLoginAt;
     }
 
     public Instant getCreatedAt() {

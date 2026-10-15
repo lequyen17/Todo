@@ -1,6 +1,7 @@
--- Chạy mỗi lần khởi động (spring.sql.init.mode=always), nên mọi lệnh đều phải idempotent.
+-- Schema ban đầu. Flyway chạy mỗi file migration đúng một lần.
+-- KHÔNG sửa file này sau khi đã chạy: thay đổi schema = thêm file V{n+1}__mo_ta.sql mới.
 
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
     id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     email               VARCHAR(255) NOT NULL,
     password            VARCHAR(255) NULL,          -- NULL = chỉ đăng nhập Google
@@ -21,7 +22,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- Mỗi lần rotate là một dòng mới, chung family_id.
 -- Mốc bắt đầu phiên = MIN(created_at) của family.
-CREATE TABLE IF NOT EXISTS refresh_tokens (
+CREATE TABLE refresh_tokens (
     id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id        BIGINT       NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     token          VARCHAR(64)  NOT NULL,          -- SHA-256 hex của refresh token (plain chỉ gửi cho client)
@@ -32,11 +33,11 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     created_at     TIMESTAMPTZ  NOT NULL DEFAULT now(),
     CONSTRAINT uq_refresh_tokens_token UNIQUE (token)
 );
-CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens (user_id);
-CREATE INDEX IF NOT EXISTS idx_refresh_tokens_family ON refresh_tokens (family_id, created_at);
+CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens (user_id);
+CREATE INDEX idx_refresh_tokens_family ON refresh_tokens (family_id, created_at);
 
--- Dành cho Google login (Level 3), chưa dùng.
-CREATE TABLE IF NOT EXISTS user_identities (
+-- Liên kết tài khoản với nhà cung cấp đăng nhập ngoài (Google).
+CREATE TABLE user_identities (
     id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id          BIGINT       NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     provider         VARCHAR(20)  NOT NULL,

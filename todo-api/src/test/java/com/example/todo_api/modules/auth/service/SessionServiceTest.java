@@ -23,13 +23,14 @@ import com.example.todo_api.config.AppProperties;
 import com.example.todo_api.core.exceptions.ApiException;
 import com.example.todo_api.core.security.AccessTokenBlacklist;
 import com.example.todo_api.core.security.AuthPrincipal;
-import com.example.todo_api.core.security.JwtService;
 import com.example.todo_api.core.utils.Tokens;
-import com.example.todo_api.modules.auth.dto.AuthSession;
+import com.example.todo_api.modules.auth.AuthErrorCode;
 import com.example.todo_api.modules.auth.entity.RefreshToken;
 import com.example.todo_api.modules.auth.repository.RefreshTokenRepository;
+import com.example.todo_api.modules.auth.security.JwtIssuer;
+import com.example.todo_api.modules.auth.session.AuthSession;
+import com.example.todo_api.modules.users.UserErrorCode;
 import com.example.todo_api.modules.users.entity.User;
-import com.example.todo_api.modules.users.entity.UserStatus;
 
 class SessionServiceTest {
 
@@ -45,17 +46,17 @@ class SessionServiceTest {
     void setUp() {
         repo = mock(RefreshTokenRepository.class);
         blacklist = mock(AccessTokenBlacklist.class);
-        JwtService jwtService = mock(JwtService.class);
+        JwtIssuer jwtIssuer = mock(JwtIssuer.class);
         AppProperties props = new AppProperties(null, null,
                 new AppProperties.Jwt("secret", Duration.ofMinutes(15), REFRESH_TTL, SESSION_MAX_AGE),
                 null, null, null, new AppProperties.Google(null),
                 new AppProperties.R2(null, null, null, null, null));
-        service = new SessionService(repo, jwtService, blacklist, props);
-        user = new User();
+        service = new SessionService(repo, jwtIssuer, blacklist, props);
+        user = User.registerWithPassword("a@example.com", "A", "hash", Instant.now());
 
         when(repo.saveAndFlush(any(RefreshToken.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(jwtService.issue(any())).thenReturn(
-                new JwtService.AccessToken("access-jwt", "jti", Instant.now().plusSeconds(900)));
+        when(jwtIssuer.issue(any())).thenReturn(
+                new JwtIssuer.AccessToken("access-jwt", "jti", Instant.now().plusSeconds(900)));
     }
 
     @Test
@@ -86,7 +87,7 @@ class SessionServiceTest {
     void refresh_reusedToken_revokesWholeFamily() {
         UUID family = UUID.randomUUID();
         RefreshToken current = storedToken("stolen", family, Instant.now().plus(Duration.ofDays(1)));
-        current.setRevokedAt(Instant.now().minusSeconds(60));
+        current.rotateTo(token("next", family, Instant.now().plus(Duration.ofDays(1))), Instant.now().minusSeconds(60));
 
         assertInvalidRefreshToken(() -> service.refresh("stolen"));
         verify(repo).revokeFamily(eq(family), any());
@@ -135,20 +136,20 @@ class SessionServiceTest {
         UUID family = UUID.randomUUID();
         storedToken("old", family, Instant.now().plus(Duration.ofDays(1)));
         when(repo.findFamilyStartedAt(family)).thenReturn(Instant.now());
-        user.setStatus(UserStatus.LOCKED);
+        user.lock();
 
         assertThatThrownBy(() -> service.refresh("old"))
-                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getCode()).isEqualTo("ACCOUNT_LOCKED"));
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getCode()).isEqualTo(UserErrorCode.ACCOUNT_LOCKED));
         verify(repo).revokeFamily(eq(family), any());
     }
 
     @Test
     void logout_blacklistsAccessTokenAndRevokesFamily() {
         UUID family = UUID.randomUUID();
-        RefreshToken stored = new RefreshToken(user, Tokens.sha256("plain"), family, Instant.now().plusSeconds(60));
+        RefreshToken stored = token("plain", family, Instant.now().plusSeconds(60));
         when(repo.findByTokenHash(Tokens.sha256("plain"))).thenReturn(Optional.of(stored));
         Instant accessExpiresAt = Instant.now().plusSeconds(600).truncatedTo(ChronoUnit.SECONDS);
-        AuthPrincipal principal = new AuthPrincipal(user, "jti-1", accessExpiresAt);
+        AuthPrincipal principal = new AuthPrincipal(1L, "a@example.com", "USER", "jti-1", accessExpiresAt);
 
         service.logout(principal, "plain");
 
@@ -159,7 +160,7 @@ class SessionServiceTest {
     @Test
     void logout_withoutPrincipal_stillRevokesFamily() {
         UUID family = UUID.randomUUID();
-        RefreshToken stored = new RefreshToken(user, Tokens.sha256("plain"), family, Instant.now().plusSeconds(60));
+        RefreshToken stored = token("plain", family, Instant.now().plusSeconds(60));
         when(repo.findByTokenHash(Tokens.sha256("plain"))).thenReturn(Optional.of(stored));
 
         service.logout(null, "plain");
@@ -168,8 +169,14 @@ class SessionServiceTest {
         verify(repo).revokeFamily(eq(family), any());
     }
 
+    /** Token có hạn đúng bằng expiresAt (issue với ttl 1h tính lùi từ expiresAt). */
+    private RefreshToken token(String plain, UUID family, Instant expiresAt) {
+        Duration ttl = Duration.ofHours(1);
+        return RefreshToken.issue(user, Tokens.sha256(plain), family, expiresAt.minus(ttl), ttl, Instant.MAX);
+    }
+
     private RefreshToken storedToken(String plain, UUID family, Instant expiresAt) {
-        RefreshToken token = new RefreshToken(user, Tokens.sha256(plain), family, expiresAt);
+        RefreshToken token = token(plain, family, expiresAt);
         when(repo.findByTokenHashForUpdate(Tokens.sha256(plain))).thenReturn(Optional.of(token));
         return token;
     }
@@ -183,6 +190,6 @@ class SessionServiceTest {
     private static void assertInvalidRefreshToken(Runnable call) {
         assertThatThrownBy(call::run)
                 .isInstanceOfSatisfying(ApiException.class,
-                        e -> assertThat(e.getCode()).isEqualTo("INVALID_REFRESH_TOKEN"));
+                        e -> assertThat(e.getCode()).isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
     }
 }

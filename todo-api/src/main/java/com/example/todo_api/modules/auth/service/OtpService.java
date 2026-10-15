@@ -5,12 +5,12 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import com.example.todo_api.config.AppProperties;
 import com.example.todo_api.core.exceptions.ApiException;
 import com.example.todo_api.core.utils.Tokens;
+import com.example.todo_api.modules.auth.AuthErrorCode;
 
 /**
  * Lưu OTP dạng Redis hash: {otp_hash, attempts, ...các field riêng của từng luồng}.
@@ -61,38 +61,31 @@ public class OtpService {
     public Map<String, String> verify(String key, String otp) {
         Map<String, String> fields = find(key);
         if (fields.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "OTP_EXPIRED", "Verification code has expired, please request a new one");
+            throw new ApiException(AuthErrorCode.OTP_EXPIRED);
         }
         long attempts = redis.opsForHash().increment(key, ATTEMPTS, 1);
         if (attempts > props.otp().maxAttempts()) {
             redis.delete(key);
-            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "OTP_TOO_MANY_ATTEMPTS",
-                    "Too many incorrect attempts, please start over");
+            throw new ApiException(AuthErrorCode.OTP_TOO_MANY_ATTEMPTS);
         }
         if (!Tokens.equalsConstantTime(fields.get(OTP_HASH), Tokens.sha256(otp))) {
             long remaining = props.otp().maxAttempts() - attempts;
-            throw new ApiException(HttpStatus.BAD_REQUEST, "OTP_INVALID",
-                    "Incorrect verification code, " + remaining + " attempt(s) left");
+            throw new ApiException(AuthErrorCode.OTP_INVALID, remaining);
         }
         redis.delete(key);
         return fields;
     }
 
-    /** otp_cooldown:{purpose}:{id} - chặn gửi mã liên tục. */
+    /** Chặn gửi mã liên tục (AuthRedisKeys.otpCooldown). */
     public void ensureNoCooldown(String purpose, String id) {
-        Long ttl = redis.getExpire(cooldownKey(purpose, id));
+        Long ttl = redis.getExpire(AuthRedisKeys.otpCooldown(purpose, id));
         if (ttl != null && ttl > 0) {
-            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "OTP_COOLDOWN",
-                    "Please wait " + ttl + " seconds before requesting a new code");
+            throw new ApiException(AuthErrorCode.OTP_COOLDOWN, ttl);
         }
     }
 
     public void startCooldown(String purpose, String id) {
         Duration cooldown = props.otp().resendCooldown();
-        redis.opsForValue().set(cooldownKey(purpose, id), "1", cooldown);
-    }
-
-    private static String cooldownKey(String purpose, String id) {
-        return "otp_cooldown:" + purpose + ":" + id;
+        redis.opsForValue().set(AuthRedisKeys.otpCooldown(purpose, id), "1", cooldown);
     }
 }

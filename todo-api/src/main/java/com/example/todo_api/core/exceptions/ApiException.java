@@ -4,20 +4,19 @@ import org.springframework.http.HttpStatus;
 
 public class ApiException extends RuntimeException {
 
-    private final HttpStatus status;
-    private final String code;
+    private final ErrorCode code;
 
-    public ApiException(HttpStatus status, String code, String message) {
-        super(message);
-        this.status = status;
+    /** args điền vào các %s/%d trong message của mã lỗi. */
+    public ApiException(ErrorCode code, Object... args) {
+        super(args.length == 0 ? code.message() : code.message().formatted(args));
         this.code = code;
     }
 
-    public HttpStatus getStatus() {
-        return status;
+    public ErrorCode getCode() {
+        return code;
     }
 
-    public String getCode() {
-        return code;
+    public HttpStatus getStatus() {
+        return code.status();
     }
 }

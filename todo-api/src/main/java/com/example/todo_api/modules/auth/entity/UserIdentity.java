@@ -82,7 +82,7 @@ public class UserIdentity {
         return providerEmail;
     }
 
-    public void setProviderEmail(String providerEmail) {
+    public void updateProviderEmail(String providerEmail) {
         this.providerEmail = providerEmail;
     }
 

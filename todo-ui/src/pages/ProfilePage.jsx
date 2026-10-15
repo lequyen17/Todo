@@ -1,6 +1,6 @@
 import { useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { apiUpload } from '../api/client';
+import { usersApi } from '../api/users';
 import { useAuth } from '../auth/AuthContext';
 import { Avatar } from '../components/Avatar';
 import { Alert } from '../components/Form';
@@ -46,9 +46,7 @@ export default function ProfilePage() {
     setMessage('');
     setUploading(true);
     try {
-      const form = new FormData();
-      form.append('file', file);
-      const me = await apiUpload('/users/me/avatar', form);
+      const me = await usersApi.uploadAvatar(file);
       setUser(me);
       setMessage('Profile photo updated.');
     } catch (err) {

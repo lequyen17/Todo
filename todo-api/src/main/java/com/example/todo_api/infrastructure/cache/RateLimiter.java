@@ -3,10 +3,10 @@ package com.example.todo_api.infrastructure.cache;
 import java.time.Duration;
 
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 import com.example.todo_api.core.exceptions.ApiException;
+import com.example.todo_api.core.exceptions.CommonErrorCode;
 
 /** Fixed window theo key rate:{ip|email}:{endpoint}, cửa sổ 1 phút. */
 @Component
@@ -27,8 +27,7 @@ public class RateLimiter {
             redis.expire(key, WINDOW);
         }
         if (count != null && count > limit) {
-            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "RATE_LIMITED",
-                    "Too many requests, please try again in a few minutes");
+            throw new ApiException(CommonErrorCode.RATE_LIMITED);
         }
     }
 }

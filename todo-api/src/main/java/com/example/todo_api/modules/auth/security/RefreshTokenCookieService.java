@@ -1,4 +1,4 @@
-package com.example.todo_api.core.security;
+package com.example.todo_api.modules.auth.security;
 
 import java.util.Optional;
 

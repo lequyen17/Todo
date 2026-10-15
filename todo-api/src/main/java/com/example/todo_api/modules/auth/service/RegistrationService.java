@@ -3,7 +3,6 @@ package com.example.todo_api.modules.auth.service;
 import java.time.Instant;
 import java.util.Map;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,16 +10,15 @@ import org.springframework.transaction.annotation.Transactional;
 import com.example.todo_api.core.exceptions.ApiException;
 import com.example.todo_api.infrastructure.cache.RateLimiter;
 import com.example.todo_api.infrastructure.email.MailService;
-import com.example.todo_api.modules.auth.dto.AuthSession;
+import com.example.todo_api.modules.auth.AuthErrorCode;
 import com.example.todo_api.modules.auth.dto.RegisterRequest;
+import com.example.todo_api.modules.auth.session.AuthSession;
 import com.example.todo_api.modules.users.entity.User;
 import com.example.todo_api.modules.users.repository.UserRepository;
 
 /** Đăng ký: lưu tạm thông tin (mật khẩu đã hash) vào Redis, chỉ tạo user sau khi xác minh OTP email. */
 @Service
 public class RegistrationService {
-
-    private static final String PURPOSE = "reg";
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -41,60 +39,47 @@ public class RegistrationService {
     }
 
     public void register(RegisterRequest req, String ip) {
-        String email = AuthRules.normalizeEmail(req.email());
+        String email = User.normalizeEmail(req.email());
         rateLimiter.check(ip, "register", 10);
         rateLimiter.check(email, "register", 3);
         if (userRepository.existsByEmail(email)) {
-            throw emailExists();
+            throw new ApiException(AuthErrorCode.EMAIL_EXISTS);
         }
-        otpService.ensureNoCooldown(PURPOSE, email);
+        otpService.ensureNoCooldown(AuthRedisKeys.PURPOSE_REGISTER, email);
 
-        String displayName = req.displayName().trim();
-        String otp = otpService.create(key(email), Map.of(
+        String displayName = req.displayName();
+        String otp = otpService.create(AuthRedisKeys.registration(email), Map.of(
                 "display_name", displayName,
                 "password", passwordEncoder.encode(req.password())));
         mailService.sendRegistrationOtp(email, displayName, otp);
-        otpService.startCooldown(PURPOSE, email);
+        otpService.startCooldown(AuthRedisKeys.PURPOSE_REGISTER, email);
     }
 
     public void resendOtp(String rawEmail, String ip) {
-        String email = AuthRules.normalizeEmail(rawEmail);
+        String email = User.normalizeEmail(rawEmail);
         rateLimiter.check(ip, "register-resend", 10);
-        Map<String, String> pending = otpService.find(key(email));
+        Map<String, String> pending = otpService.find(AuthRedisKeys.registration(email));
         if (pending.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "REGISTRATION_EXPIRED",
-                    "Registration session has expired, please register again");
+            throw new ApiException(AuthErrorCode.REGISTRATION_EXPIRED);
         }
-        otpService.ensureNoCooldown(PURPOSE, email);
-        String otp = otpService.regenerate(key(email));
+        otpService.ensureNoCooldown(AuthRedisKeys.PURPOSE_REGISTER, email);
+        String otp = otpService.regenerate(AuthRedisKeys.registration(email));
         mailService.sendRegistrationOtp(email, pending.get("display_name"), otp);
-        otpService.startCooldown(PURPOSE, email);
+        otpService.startCooldown(AuthRedisKeys.PURPOSE_REGISTER, email);
     }
 
     @Transactional
     public AuthSession verify(String rawEmail, String otp, String ip) {
-        String email = AuthRules.normalizeEmail(rawEmail);
+        String email = User.normalizeEmail(rawEmail);
         rateLimiter.check(ip, "register-verify", 20);
-        Map<String, String> pending = otpService.verify(key(email), otp);
+        Map<String, String> pending = otpService.verify(AuthRedisKeys.registration(email), otp);
         if (userRepository.existsByEmail(email)) {
-            throw emailExists();
+            throw new ApiException(AuthErrorCode.EMAIL_EXISTS);
         }
         Instant now = Instant.now();
-        User user = new User();
-        user.setEmail(email);
-        user.setPassword(pending.get("password"));
-        user.setDisplayName(pending.get("display_name"));
-        user.setEmailVerifiedAt(now);
-        user.setLastLoginAt(now);
+        User user = User.registerWithPassword(email, pending.get("display_name"), pending.get("password"), now);
+        user.recordLogin(now);
         userRepository.save(user);
         return sessionService.start(user, now);
-    }
-
-    private static ApiException emailExists() {
-        return new ApiException(HttpStatus.CONFLICT, "EMAIL_EXISTS", "Email is already registered");
-    }
-
-    private static String key(String email) {
-        return "reg_otp:" + email;
     }
 }

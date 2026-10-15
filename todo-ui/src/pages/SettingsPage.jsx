@@ -1,76 +1,47 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../api/client';
+import { authApi } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { Alert, Field } from '../components/Form';
 import { LockIcon } from '../components/Icons';
+import { confirmPasswordMatches, useForm } from '../hooks/useForm';
 
 const EMPTY_FORM = { currentPassword: '', newPassword: '', confirmPassword: '' };
 
 function ChangePasswordForm() {
   const { signIn } = useAuth();
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [error, setError] = useState('');
-  const [fieldErrors, setFieldErrors] = useState({});
-  const [message, setMessage] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const { field, handleSubmit, setValues, error, success, submitting } = useForm(EMPTY_FORM, {
+    validate: confirmPasswordMatches('newPassword'),
+  });
 
-  const update = (key) => (e) => setForm({ ...form, [key]: e.target.value });
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setMessage('');
-    setFieldErrors({});
-    if (form.newPassword !== form.confirmPassword) {
-      setFieldErrors({ confirmPassword: 'Passwords do not match' });
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const tokens = await api('/auth/change-password', {
-        method: 'POST',
-        body: { currentPassword: form.currentPassword, newPassword: form.newPassword },
-      });
-      // Server đã thu hồi mọi phiên khác, cấp phiên mới cho thiết bị này
-      await signIn(tokens);
-      setForm(EMPTY_FORM);
-      setMessage('Password changed. You have been signed out on all other devices.');
-    } catch (err) {
-      setError(err.message);
-      setFieldErrors(err.fields || {});
-    } finally {
-      setSubmitting(false);
-    }
+  const changePassword = async (values) => {
+    const tokens = await authApi.changePassword(values);
+    // Server đã thu hồi mọi phiên khác, cấp phiên mới cho thiết bị này
+    await signIn(tokens);
+    setValues(EMPTY_FORM);
+    return 'Password changed. You have been signed out on all other devices.';
   };
 
   return (
-    <form className="settings-form" onSubmit={handleSubmit} noValidate>
+    <form className="settings-form" onSubmit={handleSubmit(changePassword)} noValidate>
       <Alert>{error}</Alert>
-      <Alert type="success">{message}</Alert>
+      <Alert type="success">{success}</Alert>
       <Field
         label="Current password"
         type="password"
         autoComplete="current-password"
-        value={form.currentPassword}
-        onChange={update('currentPassword')}
-        error={fieldErrors.currentPassword}
+        {...field('currentPassword')}
       />
       <Field
-        label="New password (8-72 characters)"
+        label="New password (8-72 characters, letters and numbers)"
         type="password"
         autoComplete="new-password"
-        value={form.newPassword}
-        onChange={update('newPassword')}
-        error={fieldErrors.newPassword}
+        {...field('newPassword')}
       />
       <Field
         label="Confirm new password"
         type="password"
         autoComplete="new-password"
-        value={form.confirmPassword}
-        onChange={update('confirmPassword')}
-        error={fieldErrors.confirmPassword}
+        {...field('confirmPassword')}
       />
       <button type="submit" className="btn btn-primary" disabled={submitting}>
         {submitting ? 'Saving...' : 'Update password'}

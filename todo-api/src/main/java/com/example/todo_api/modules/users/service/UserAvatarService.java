@@ -4,20 +4,19 @@ import java.io.IOException;
 import java.util.Locale;
 import java.util.Map;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.example.todo_api.core.exceptions.ApiException;
+import com.example.todo_api.infrastructure.IntegrationErrorCode;
 import com.example.todo_api.infrastructure.r2.R2AvatarStorage;
+import com.example.todo_api.modules.users.UserErrorCode;
 import com.example.todo_api.modules.users.entity.User;
 import com.example.todo_api.modules.users.repository.UserRepository;
 
 @Service
 public class UserAvatarService {
-
-    private static final int MAX_BYTES = 2 * 1024 * 1024;
 
     private static final Map<String, String> EXT_BY_TYPE = Map.of(
             "image/jpeg", "jpg",
@@ -40,35 +39,30 @@ public class UserAvatarService {
     @Transactional
     public User upload(User user, MultipartFile file) {
         if (!storage.enabled()) {
-            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "AVATAR_UPLOAD_DISABLED",
-                    "Avatar upload is not configured");
+            throw new ApiException(IntegrationErrorCode.AVATAR_UPLOAD_DISABLED);
         }
         if (file == null || file.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "AVATAR_REQUIRED", "Please choose an image file");
-        }
-        if (file.getSize() > MAX_BYTES) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "AVATAR_TOO_LARGE", "Image must be 2 MB or smaller");
+            throw new ApiException(UserErrorCode.AVATAR_REQUIRED);
         }
         String contentType = normalizeContentType(file.getContentType());
         String extension = EXT_BY_TYPE.get(contentType);
         if (extension == null) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "AVATAR_INVALID_TYPE",
-                    "Use JPEG, PNG, WebP, or GIF");
+            throw new ApiException(UserErrorCode.AVATAR_INVALID_TYPE);
         }
         byte[] bytes;
         try {
             bytes = file.getBytes();
         } catch (IOException e) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "AVATAR_READ_FAILED", "Could not read uploaded file");
+            throw new ApiException(UserErrorCode.AVATAR_READ_FAILED);
         }
         String previousUrl = user.getAvatarUrl();
         String publicUrl = storage.upload(user.getId(), contentType, extension, bytes);
-        if (publicUrl.length() > 500) {
+        try {
+            user.changeAvatar(publicUrl);
+        } catch (ApiException e) {
             storage.deleteIfOwned(publicUrl);
-            throw new ApiException(HttpStatus.BAD_REQUEST, "AVATAR_URL_TOO_LONG",
-                    "Public URL is too long; use a shorter custom domain for R2_PUBLIC_URL");
+            throw e;
         }
-        user.setAvatarUrl(publicUrl);
         userRepository.save(user);
         storage.deleteIfOwned(previousUrl);
         return user;

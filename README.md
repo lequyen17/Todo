@@ -112,6 +112,14 @@ docker compose up -d --no-build
 
 Schema database được tạo và cập nhật tự động khi `api` khởi động, không cần chạy migration bằng tay.
 
+### Thay đổi schema database
+
+Schema do [Flyway](https://documentation.red-gate.com/flyway) quản lý. Migration nằm trong `todo-api/src/main/resources/db/migration/` và mỗi file chỉ chạy **một lần** cho mỗi database (lịch sử lưu ở bảng `flyway_schema_history`).
+
+- Muốn thêm/sửa cột, bảng, index: tạo file mới với số phiên bản tiếp theo, vd. `V2__add_todos_table.sql`, rồi build lại `api`.
+- **Không sửa** file migration đã chạy (Flyway kiểm tra checksum và sẽ không cho app khởi động).
+- Khi khởi động, Hibernate kiểm tra entity khớp với schema (`ddl-auto=validate`): thêm field vào entity mà quên migration thì `api` báo lỗi ngay thay vì lỗi lúc chạy.
+
 ## Chia sẻ ra Internet bằng ngrok
 
 Bản demo ở đầu README được mở ra Internet theo cách này. Nó dùng được khi máy chạy Docker không có IP public hay tên miền.

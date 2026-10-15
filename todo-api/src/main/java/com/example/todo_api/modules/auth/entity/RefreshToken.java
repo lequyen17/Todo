@@ -1,5 +1,6 @@
 package com.example.todo_api.modules.auth.entity;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -49,11 +50,24 @@ public class RefreshToken {
     protected RefreshToken() {
     }
 
-    public RefreshToken(User user, String token, UUID familyId, Instant expiresAt) {
+    private RefreshToken(User user, String tokenHash, UUID familyId, Instant expiresAt) {
         this.user = user;
-        this.token = token;
+        this.token = tokenHash;
         this.familyId = familyId;
         this.expiresAt = expiresAt;
+    }
+
+    /**
+     * Token mới trong family: hạn = now + ttl nhưng không vượt quá sessionEnd (hạn tối đa của cả phiên).
+     * Chỉ lưu hash; token gốc chỉ gửi cho client.
+     */
+    public static RefreshToken issue(User user, String tokenHash, UUID familyId, Instant now, Duration ttl,
+            Instant sessionEnd) {
+        Instant expiresAt = now.plus(ttl);
+        if (expiresAt.isAfter(sessionEnd)) {
+            expiresAt = sessionEnd;
+        }
+        return new RefreshToken(user, tokenHash, familyId, expiresAt);
     }
 
     @PrePersist
@@ -68,6 +82,12 @@ public class RefreshToken {
 
     public boolean isExpired(Instant now) {
         return !expiresAt.isAfter(now);
+    }
+
+    /** Đã đổi sang token kế tiếp: đánh dấu cả replacedBy và revokedAt để lần dùng lại bị phát hiện. */
+    public void rotateTo(RefreshToken next, Instant now) {
+        replacedById = next.getId();
+        revokedAt = now;
     }
 
     public Long getId() {
@@ -90,20 +110,12 @@ public class RefreshToken {
         return replacedById;
     }
 
-    public void setReplacedById(Long replacedById) {
-        this.replacedById = replacedById;
-    }
-
     public Instant getExpiresAt() {
         return expiresAt;
     }
 
     public Instant getRevokedAt() {
         return revokedAt;
-    }
-
-    public void setRevokedAt(Instant revokedAt) {
-        this.revokedAt = revokedAt;
     }
 
     public Instant getCreatedAt() {

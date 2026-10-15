@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react';
+import { useForm } from '../hooks/useForm';
 import { Alert, Field } from './Form';
 
 const RESEND_SECONDS = 60;
 
 /** Form nhập OTP 6 số kèm nút gửi lại mã có đếm ngược. */
 export function OtpForm({ onSubmit, onResend }) {
-  const [otp, setOtp] = useState('');
-  const [error, setError] = useState('');
-  const [info, setInfo] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const { values, setValue, handleSubmit, error, setError, fieldErrors, success, setSuccess, submitting } =
+    useForm({ otp: '' });
   const [cooldown, setCooldown] = useState(RESEND_SECONDS);
 
   useEffect(() => {
@@ -17,26 +16,13 @@ export function OtpForm({ onSubmit, onResend }) {
     return () => clearTimeout(timer);
   }, [cooldown]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setInfo('');
-    setSubmitting(true);
-    try {
-      await onSubmit(otp);
-    } catch (err) {
-      setError(err.fields?.otp || err.message);
-      setSubmitting(false);
-    }
-  };
-
   const handleResend = async () => {
     setError('');
-    setInfo('');
+    setSuccess('');
     try {
       await onResend();
-      setInfo('A new verification code has been sent');
-      setOtp('');
+      setSuccess('A new verification code has been sent');
+      setValue('otp', '');
       setCooldown(RESEND_SECONDS);
     } catch (err) {
       setError(err.message);
@@ -44,9 +30,9 @@ export function OtpForm({ onSubmit, onResend }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} noValidate>
+    <form onSubmit={handleSubmit(({ otp }) => onSubmit(otp))} noValidate>
       <Alert>{error}</Alert>
-      <Alert type="success">{info}</Alert>
+      <Alert type="success">{success}</Alert>
       <Field
         label="Verification code"
         className="otp-input"
@@ -54,10 +40,11 @@ export function OtpForm({ onSubmit, onResend }) {
         autoComplete="one-time-code"
         maxLength={6}
         autoFocus
-        value={otp}
-        onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+        value={values.otp}
+        onChange={(e) => setValue('otp', e.target.value.replace(/\D/g, ''))}
+        error={fieldErrors.otp}
       />
-      <button type="submit" className="btn btn-primary" disabled={submitting || otp.length !== 6}>
+      <button type="submit" className="btn btn-primary" disabled={submitting || values.otp.length !== 6}>
         {submitting ? 'Verifying...' : 'Verify'}
       </button>
       <button type="button" className="btn btn-link" onClick={handleResend} disabled={cooldown > 0}>
