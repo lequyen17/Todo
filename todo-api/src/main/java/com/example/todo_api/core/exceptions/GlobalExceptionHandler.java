@@ -3,12 +3,8 @@ package com.example.todo_api.core.exceptions;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
-import org.springframework.mail.MailException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -16,8 +12,6 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
-
-    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(ApiException.class)
     ResponseEntity<ErrorResponse> handleApi(ApiException e) {
@@ -42,12 +36,5 @@ public class GlobalExceptionHandler {
     ResponseEntity<ErrorResponse> handleMaxUpload(MaxUploadSizeExceededException e) {
         return ResponseEntity.badRequest()
                 .body(new ErrorResponse("AVATAR_TOO_LARGE", "Image must be 2 MB or smaller"));
-    }
-
-    @ExceptionHandler(MailException.class)
-    ResponseEntity<ErrorResponse> handleMail(MailException e) {
-        log.error("Failed to send email", e);
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(new ErrorResponse("MAIL_FAILED", "Could not send email, please try again later"));
     }
 }

@@ -1,13 +1,23 @@
 package com.example.todo_api.infrastructure.email;
 
+import java.util.concurrent.Executor;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.example.todo_api.config.AppProperties;
 
+/**
+ * Gửi mail bất đồng bộ trên mailExecutor: request không chờ SMTP, lỗi SMTP chỉ ghi log.
+ * Gọi trong transaction thì chỉ gửi sau khi commit (rollback -> không gửi).
+ */
 @Service
 public class MailService {
 
@@ -15,10 +25,13 @@ public class MailService {
 
     private final JavaMailSender mailSender;
     private final AppProperties props;
+    private final Executor mailExecutor;
 
-    public MailService(JavaMailSender mailSender, AppProperties props) {
+    public MailService(JavaMailSender mailSender, AppProperties props,
+            @Qualifier("mailExecutor") Executor mailExecutor) {
         this.mailSender = mailSender;
         this.props = props;
+        this.mailExecutor = mailExecutor;
     }
 
     public void sendRegistrationOtp(String to, String displayName, String otp) {
@@ -64,6 +77,26 @@ public class MailService {
         message.setTo(to);
         message.setSubject(subject);
         message.setText(text);
-        mailSender.send(message);
+
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    dispatch(message);
+                }
+            });
+        } else {
+            dispatch(message);
+        }
+    }
+
+    private void dispatch(SimpleMailMessage message) {
+        mailExecutor.execute(() -> {
+            try {
+                mailSender.send(message);
+            } catch (MailException e) {
+                log.error("Failed to send email '{}' to {}", message.getSubject(), message.getTo(), e);
+            }
+        });
     }
 }

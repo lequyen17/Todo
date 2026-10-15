@@ -1,25 +1,39 @@
-const ACCESS_KEY = 'accessToken';
-const REFRESH_KEY = 'refreshToken';
+/** Access token chỉ trong RAM tab; refresh nằm HttpOnly cookie (path /api/auth). */
+let accessToken = null;
+
+const authChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('todo-auth') : null;
 
 export const tokenStore = {
   get access() {
-    return localStorage.getItem(ACCESS_KEY);
+    return accessToken;
   },
-  get refresh() {
-    return localStorage.getItem(REFRESH_KEY);
-  },
-  set({ accessToken, refreshToken }) {
-    localStorage.setItem(ACCESS_KEY, accessToken);
-    localStorage.setItem(REFRESH_KEY, refreshToken);
+  set(tokens) {
+    accessToken = tokens?.accessToken ?? null;
+    if (accessToken) broadcastSessionUpdated(accessToken);
   },
   clear() {
-    localStorage.removeItem(ACCESS_KEY);
-    localStorage.removeItem(REFRESH_KEY);
-  },
-  isRefreshKey(key) {
-    return key === REFRESH_KEY;
+    accessToken = null;
+    broadcastSignedOut();
   },
 };
+
+function broadcastSessionUpdated(token) {
+  authChannel?.postMessage({ type: 'session-updated', accessToken: token });
+}
+
+function broadcastSignedOut() {
+  authChannel?.postMessage({ type: 'signed-out' });
+}
+
+authChannel?.addEventListener('message', (event) => {
+  const msg = event.data;
+  if (msg?.type === 'session-updated') {
+    accessToken = msg.accessToken;
+  } else if (msg?.type === 'signed-out') {
+    accessToken = null;
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  }
+});
 
 export class ApiError extends Error {
   constructor(status, body) {
@@ -58,15 +72,18 @@ async function parse(res) {
 }
 
 /**
- * Refresh token bị rotate sau mỗi lần dùng, nên chỉ được refresh một lần cho mọi tab.
- * navigator.locks khoá chung giữa các tab; tab vào sau thấy access token đã đổi thì dùng luôn.
+ * Refresh rotate cookie; navigator.locks tránh hai tab refresh cùng lúc.
+ * Tab vào sau thấy access đã đổi (BroadcastChannel) thì bỏ qua.
  */
 async function refreshTokens(failedAccessToken) {
   const run = async () => {
-    if (tokenStore.access && tokenStore.access !== failedAccessToken) return true;
-    const refreshToken = tokenStore.refresh;
-    if (!refreshToken) return false;
-    const res = await send('/auth/refresh', { method: 'POST', body: { refreshToken }, auth: false });
+    if (failedAccessToken && tokenStore.access && tokenStore.access !== failedAccessToken) {
+      return true;
+    }
+    const res = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+    });
     if (!res.ok) {
       tokenStore.clear();
       return false;
@@ -77,15 +94,21 @@ async function refreshTokens(failedAccessToken) {
   return navigator.locks ? navigator.locks.request('todo-auth-refresh', run) : run();
 }
 
+/** Khôi phục phiên sau F5 khi cookie refresh còn hợp lệ. */
+export async function tryRestoreSession() {
+  if (tokenStore.access) return true;
+  return refreshTokens(null);
+}
+
 export async function api(path, options = {}) {
   const auth = options.auth !== false;
   const usedAccessToken = tokenStore.access;
   let res = await send(path, options);
 
-  if (res.status === 401 && auth && usedAccessToken) {
+  if (res.status === 401 && auth) {
     if (await refreshTokens(usedAccessToken)) {
       res = await send(path, options);
-    } else {
+    } else if (usedAccessToken) {
       window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
     }
   }
@@ -98,7 +121,11 @@ export async function apiUpload(path, formData) {
   const headers = { Accept: 'application/json' };
   if (tokenStore.access) headers.Authorization = `Bearer ${tokenStore.access}`;
 
-  let res = await fetch(`/api${path}`, { method: 'POST', headers, body: formData });
+  let res = await fetch(`/api${path}`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
 
   if (res.status === 401 && usedAccessToken) {
     if (await refreshTokens(usedAccessToken)) {

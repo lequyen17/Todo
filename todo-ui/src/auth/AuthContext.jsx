@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { api, SESSION_EXPIRED_EVENT, tokenStore } from '../api/client';
+import { api, SESSION_EXPIRED_EVENT, tokenStore, tryRestoreSession } from '../api/client';
 
 const AuthContext = createContext(null);
 
@@ -14,33 +14,27 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    if (!tokenStore.refresh) {
-      setLoading(false);
-      return;
-    }
-    loadProfile()
-      .catch(() => {
+    (async () => {
+      try {
+        const restored = await tryRestoreSession();
+        if (!restored) return;
+        await loadProfile();
+      } catch {
         tokenStore.clear();
         setUser(null);
-      })
-      .finally(() => setLoading(false));
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [loadProfile]);
 
   useEffect(() => {
     const onExpired = () => setUser(null);
-    // Tab khác đăng xuất -> refresh token bị xoá khỏi localStorage
-    const onStorage = (e) => {
-      if (tokenStore.isRefreshKey(e.key) && !e.newValue) setUser(null);
-    };
     window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
-    window.addEventListener('storage', onStorage);
-    return () => {
-      window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
-      window.removeEventListener('storage', onStorage);
-    };
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, []);
 
-  /** Gọi sau khi nhận cặp token (verify OTP, đổi mật khẩu). */
+  /** Gọi sau khi nhận access token (verify OTP, đổi mật khẩu); refresh đã set qua cookie. */
   const signIn = useCallback(
     async (tokens) => {
       tokenStore.set(tokens);
@@ -51,7 +45,7 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(async () => {
     try {
-      await api('/auth/logout', { method: 'POST', body: { refreshToken: tokenStore.refresh } });
+      await api('/auth/logout', { method: 'POST' });
     } catch {
       // Dù server lỗi vẫn xoá phiên phía client
     }
