@@ -331,6 +331,48 @@ a:hover {
 }
 
 
+.app-header-start {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex: 1;
+  min-width: 0;
+}
+
+.header-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 360px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--muted);
+}
+
+.header-search:focus-within {
+  outline: 2px solid var(--primary);
+  outline-offset: -1px;
+  background: var(--surface);
+}
+
+.header-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.header-search input:focus {
+  outline: none;
+}
+
 .app-main {
   max-width: 960px;
   margin: 0 auto;
@@ -791,24 +833,82 @@ a:hover {
 
 .task-list-toolbar {
   display: flex;
-  justify-content: flex-end;
-  padding: 8px 16px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px 12px;
 }
 
-.task-list-card .alert {
-  margin: 8px 16px;
+.task-filters,
+.task-sort {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.filter select {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--surface);
 }
 
 .toggle {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  padding: 7px 4px;
   color: var(--muted);
   font-size: 0.9rem;
   cursor: pointer;
 }
 
+.toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+}
+
+.sort-direction {
+  padding: 7px 12px;
+  font-size: 1rem;
+}
+
+.search-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  background: var(--primary-soft);
+  color: var(--text);
+}
+
+.task-list-card .alert {
+  margin: 8px 16px;
+}
+
+
 .task-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
   padding: 24px 16px;
   text-align: center;
 }
@@ -961,6 +1061,10 @@ a:hover {
 
   .field-row {
     grid-template-columns: 1fr;
+  }
+
+  .app-header-start {
+    gap: 10px;
   }
 
   .task-main {

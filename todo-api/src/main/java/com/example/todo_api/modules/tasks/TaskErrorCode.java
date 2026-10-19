@@ -10,6 +10,9 @@ public enum TaskErrorCode implements ErrorCode {
     // BR-02: task của người khác cũng trả về lỗi này, không tiết lộ task có tồn tại
     TASK_NOT_FOUND(HttpStatus.NOT_FOUND, "Task not found"),
 
+    // Tham số tz của bộ lọc Due không phải múi giờ IANA hợp lệ
+    INVALID_TIME_ZONE(HttpStatus.BAD_REQUEST, "Unknown time zone: %s"),
+
     // VR-10
     REMINDER_REQUIRES_DUE_DATE(HttpStatus.BAD_REQUEST, "Set a due date before adding a reminder"),
     REMINDER_IN_PAST(HttpStatus.BAD_REQUEST, "Reminder must be in the future"),

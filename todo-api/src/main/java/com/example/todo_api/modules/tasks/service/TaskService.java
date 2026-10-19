@@ -1,43 +1,42 @@
 package com.example.todo_api.modules.tasks.service;
 
+import java.time.DateTimeException;
 import java.time.Instant;
+import java.time.ZoneId;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.todo_api.core.exceptions.ApiException;
 import com.example.todo_api.modules.tasks.TaskErrorCode;
 import com.example.todo_api.modules.tasks.dto.CreateTaskRequest;
+import com.example.todo_api.modules.tasks.dto.TaskListParams;
 import com.example.todo_api.modules.tasks.dto.UpdateTaskRequest;
 import com.example.todo_api.modules.tasks.entity.Task;
 import com.example.todo_api.modules.tasks.repository.TaskRepository;
+import com.example.todo_api.modules.tasks.repository.TaskSearchRepository;
+import com.example.todo_api.modules.tasks.search.TaskSearch;
 
 /** Quản lý task trong Inbox (FR-02). Mọi thao tác chỉ chạm task của chính user (BR-01, BR-02). */
 @Service
 public class TaskService {
 
-    /**
-     * Mặc định của Inbox: due date tăng dần, task không có due date xếp cuối (FR-03.3).
-     * id phá hòa để thứ tự cố định giữa các trang.
-     */
-    private static final Sort INBOX_ORDER = Sort.by(Sort.Order.asc("dueDate").nullsLast(), Sort.Order.asc("id"));
-
     private final TaskRepository taskRepository;
+    private final TaskSearchRepository searchRepository;
 
-    public TaskService(TaskRepository taskRepository) {
+    public TaskService(TaskRepository taskRepository, TaskSearchRepository searchRepository) {
         this.taskRepository = taskRepository;
+        this.searchRepository = searchRepository;
     }
 
-    /** Mặc định ẩn task đã hoàn thành (FR-02.2). */
+    /** Danh sách Inbox kèm tìm kiếm, lọc, sắp xếp (FR-02.2, FR-03). */
     @Transactional(readOnly = true)
-    public Page<Task> list(Long userId, boolean showCompleted, int page, int size) {
-        PageRequest pageable = PageRequest.of(page, size, INBOX_ORDER);
-        return showCompleted
-                ? taskRepository.findByUserId(userId, pageable)
-                : taskRepository.findByUserIdAndCompletedFalse(userId, pageable);
+    public Page<Task> list(Long userId, TaskListParams params) {
+        TaskSearch search = new TaskSearch(userId, params.q(), params.showCompleted(), params.priority(), params.due(),
+                params.sort(), params.direction() == TaskListParams.Direction.ASC, zone(params.tz()));
+        return searchRepository.search(search, Instant.now(), PageRequest.of(params.page(), params.size()));
     }
 
     @Transactional(readOnly = true)
@@ -76,6 +75,14 @@ public class TaskService {
     @Transactional
     public void delete(Long userId, Long taskId) {
         taskRepository.delete(find(userId, taskId));
+    }
+
+    private static ZoneId zone(String tz) {
+        try {
+            return ZoneId.of(tz);
+        } catch (DateTimeException e) {
+            throw new ApiException(TaskErrorCode.INVALID_TIME_ZONE, tz);
+        }
     }
 
     private Task find(Long userId, Long taskId) {
