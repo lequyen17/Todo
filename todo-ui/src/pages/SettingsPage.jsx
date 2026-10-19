@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { authApi } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { Alert, Field } from '../components/Form';
@@ -57,12 +56,54 @@ function ChangePasswordForm() {
   );
 }
 
+/**
+ * Tài khoản tạo bằng Google chưa có mật khẩu: gửi link đặt mật khẩu về email của chính user,
+ * dùng lại API quên mật khẩu (FR-01.4). Link mở trang /reset-password, vào được cả khi đang đăng nhập.
+ */
+function SetPasswordByEmail() {
+  const { user } = useAuth();
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+
+  const send = async () => {
+    setSending(true);
+    setError('');
+    try {
+      await authApi.forgotPassword(user.email);
+      setSent(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="settings-form">
+      <p className="muted card-description">
+        Your account signs in with Google and has no password yet. To also sign in with email and password,
+        we can send a link to <strong>{user.email}</strong> to set one.
+      </p>
+      <Alert>{error}</Alert>
+      {sent && (
+        <Alert type="success">
+          We sent a link to {user.email}. Open it within 30 minutes to set your password.
+        </Alert>
+      )}
+      <button type="button" className="btn btn-primary" onClick={send} disabled={sending}>
+        {sending ? 'Sending...' : sent ? 'Send again' : 'Send me a link'}
+      </button>
+    </div>
+  );
+}
+
 function PasswordSection() {
   const { user } = useAuth();
 
   return (
     <section className="card">
-      <h2 className="card-title">Change password</h2>
+      <h2 className="card-title">{user.hasPassword ? 'Change password' : 'Set a password'}</h2>
       {user.hasPassword ? (
         <>
           <p className="muted card-description">
@@ -71,11 +112,7 @@ function PasswordSection() {
           <ChangePasswordForm />
         </>
       ) : (
-        // Tài khoản tạo bằng Google chưa có mật khẩu -> đặt qua luồng quên mật khẩu (link gửi về email)
-        <p className="muted card-description">
-          Your account signs in with Google and has no password yet. To also sign in with email and
-          password, <Link to="/forgot-password">set a password</Link> via a link sent to your email.
-        </p>
+        <SetPasswordByEmail />
       )}
     </section>
   );
