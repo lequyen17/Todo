@@ -7,7 +7,8 @@ export default defineConfig({
     port: 3000,
     // Chạy `npm run dev` ngoài Docker thì /api được proxy sang backend local
     proxy: {
-      '/api': 'http://localhost:8080',
+      // ws: true để proxy cả kết nối realtime /api/ws (WebSocket)
+      '/api': { target: 'http://localhost:8080', ws: true },
     },
   },
 });

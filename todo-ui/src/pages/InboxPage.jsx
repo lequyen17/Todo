@@ -53,6 +53,12 @@ function TaskRow({ task, onToggle, onOpen }) {
   );
 }
 
+function withoutParam(searchParams, name) {
+  const next = new URLSearchParams(searchParams);
+  next.delete(name);
+  return next;
+}
+
 function FilterSelect({ label, value, options, onChange }) {
   return (
     <label className="filter">
@@ -72,7 +78,9 @@ function FilterSelect({ label, value, options, onChange }) {
 export default function InboxPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = readTaskQuery(searchParams);
-  const queryKey = searchParams.toString();
+  // ?task= chỉ để mở một task (link trong email / thông báo), không thuộc điều kiện của danh sách
+  const queryKey = withoutParam(searchParams, 'task').toString();
+  const openTaskId = searchParams.get('task');
   const [incompleteCount, setIncompleteCount] = useState(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
@@ -114,6 +122,22 @@ export default function InboxPage() {
   useEffect(() => {
     settingsApi.get().then(setSettings).catch(() => setSettings(null));
   }, []);
+
+  // Mở task từ link /inbox?task={id} (FR-04.2 email, FR-04.3 AC3), rồi bỏ tham số khỏi URL
+  useEffect(() => {
+    if (!openTaskId) return undefined;
+    let cancelled = false;
+    tasksApi
+      .get(openTaskId)
+      .then((task) => !cancelled && setEditing(task))
+      .catch((err) => !cancelled && setError(err.status === 404 ? 'This task no longer exists.' : err.message))
+      .finally(() => {
+        if (!cancelled) setSearchParams((prev) => withoutParam(prev, 'task'), { replace: true });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [openTaskId, setSearchParams]);
 
   // Số task chưa hoàn thành cạnh tiêu đề Inbox (FR-02.0)
   const loadCount = useCallback(() => {

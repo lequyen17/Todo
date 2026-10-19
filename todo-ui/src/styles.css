@@ -393,6 +393,212 @@ a:hover {
   font-size: 0.9rem;
 }
 
+/* ---------------------------------------------------------------- Header: chuông thông báo */
+
+.app-header-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.bell {
+  position: relative;
+}
+
+.bell-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.bell-trigger:hover,
+.bell-trigger[aria-expanded='true'] {
+  background: var(--surface-muted);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.bell-badge {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 2px solid var(--surface);
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.bell-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  max-height: 480px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+}
+
+.bell-panel-header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.bell-mark-all,
+.bell-more {
+  border: none;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.bell-mark-all:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.bell-more {
+  width: 100%;
+  padding: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.bell-message {
+  margin: 0;
+  padding: 20px 14px;
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+.bell-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bell-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 14px 10px 26px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+}
+
+.bell-item:hover {
+  background: var(--surface-muted);
+}
+
+.bell-item.is-unread {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.bell-item.is-unread::before {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 16px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+.bell-item-time {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
+/* ---------------------------------------------------------------- Toast */
+
+.toaster {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.toast-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1;
+  padding: 12px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.toast-body svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--primary);
+}
+
+.toast-close {
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
 /* ---------------------------------------------------------------- Avatar & badges */
 
 .avatar {

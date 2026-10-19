@@ -17,6 +17,8 @@ export const tasksApi = {
   /** { incomplete } — số hiện cạnh tiêu đề Inbox. */
   count: () => api('/tasks/count'),
 
+  get: (id) => api(`/tasks/${id}`),
+
   create: (body) => api('/tasks', { method: 'POST', body }),
 
   update: (id, body) => api(`/tasks/${id}`, { method: 'PUT', body }),

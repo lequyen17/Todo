@@ -34,6 +34,8 @@ public class SecurityConfig {
                                 "/api/auth/forgot-password", "/api/auth/reset-password",
                                 "/api/auth/google", "/api/auth/google/**",
                                 "/api/docs/**", "/api/swagger-ui/**", "/api/swagger-ui.html",
+                                // Bắt tay WebSocket không kèm token; xác thực ở frame STOMP CONNECT (StompAuthInterceptor)
+                                "/api/ws", "/api/ws/**",
                                 "/error")
                         .permitAll()
                         .anyRequest().authenticated())

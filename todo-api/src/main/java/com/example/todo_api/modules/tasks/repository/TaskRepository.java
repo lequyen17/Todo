@@ -15,4 +15,7 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
     Optional<Task> findByIdAndUserId(Long id, Long userId);
 
     long countByUserIdAndCompletedFalse(Long userId);
+
+    /** Task còn tồn tại và chưa hoàn thành: kiểm tra lại ngay trước khi gửi nhắc nhở (FR-04.2 bước 4). */
+    boolean existsByIdAndCompletedFalse(Long id);
 }

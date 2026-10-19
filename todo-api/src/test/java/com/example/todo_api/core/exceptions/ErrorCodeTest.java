@@ -12,6 +12,7 @@ import org.springframework.http.HttpStatus;
 
 import com.example.todo_api.infrastructure.IntegrationErrorCode;
 import com.example.todo_api.modules.auth.AuthErrorCode;
+import com.example.todo_api.modules.notifications.NotificationErrorCode;
 import com.example.todo_api.modules.settings.SettingsErrorCode;
 import com.example.todo_api.modules.tasks.TaskErrorCode;
 import com.example.todo_api.modules.users.UserErrorCode;
@@ -23,7 +24,8 @@ class ErrorCodeTest {
     void codeNamesAreUniqueAcrossModules() {
         List<String> names = new ArrayList<>();
         Stream.of(CommonErrorCode.values(), IntegrationErrorCode.values(), AuthErrorCode.values(),
-                UserErrorCode.values(), TaskErrorCode.values(), SettingsErrorCode.values())
+                UserErrorCode.values(), TaskErrorCode.values(), SettingsErrorCode.values(),
+                NotificationErrorCode.values())
                 .flatMap(Arrays::stream)
                 .forEach(code -> names.add(code.name()));
 

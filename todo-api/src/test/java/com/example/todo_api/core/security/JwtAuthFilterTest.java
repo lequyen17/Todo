@@ -40,7 +40,7 @@ class JwtAuthFilterTest {
         key = new JwtKey(props);
         blacklist = mock(AccessTokenBlacklist.class);
         lookup = mock(AuthAccountLookup.class);
-        filter = new JwtAuthFilter(new JwtVerifier(key), blacklist, lookup);
+        filter = new JwtAuthFilter(new AccessTokenAuthenticator(new JwtVerifier(key), blacklist, lookup));
     }
 
     @AfterEach

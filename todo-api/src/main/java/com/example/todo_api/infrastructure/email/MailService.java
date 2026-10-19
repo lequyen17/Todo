@@ -67,16 +67,43 @@ public class MailService {
                 """.formatted(displayName, props.passwordReset().ttl().toMinutes(), link));
     }
 
-    private void send(String to, String subject, String text) {
+    /**
+     * Email nhắc nhở (FR-04.2 kênh email): nội dung MSG-04 kèm link mở task.
+     * Khác các mail khác: gửi ngay trên luồng gọi và ném MailException khi lỗi, để bên gọi tự thử lại.
+     */
+    public void sendTaskReminder(String to, String displayName, String reminderMessage, String taskLink)
+            throws MailException {
+        SimpleMailMessage message = message(to, "Reminder: " + reminderMessage, """
+                Hi %s,
+
+                %s
+
+                Open the task: %s
+
+                You can turn off reminders or change channels in Settings.
+                """.formatted(displayName, reminderMessage, taskLink));
         if (!props.mail().enabled()) {
-            log.info("[MAIL_ENABLED=false] To: {} | Subject: {}\n{}", to, subject, text);
+            log.info("[MAIL_ENABLED=false] To: {} | Subject: {}\n{}", to, message.getSubject(), message.getText());
             return;
         }
+        mailSender.send(message);
+    }
+
+    private SimpleMailMessage message(String to, String subject, String text) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(props.mail().from());
         message.setTo(to);
         message.setSubject(subject);
         message.setText(text);
+        return message;
+    }
+
+    private void send(String to, String subject, String text) {
+        if (!props.mail().enabled()) {
+            log.info("[MAIL_ENABLED=false] To: {} | Subject: {}\n{}", to, subject, text);
+            return;
+        }
+        SimpleMailMessage message = message(to, subject, text);
 
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
