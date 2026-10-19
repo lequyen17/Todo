@@ -30,6 +30,7 @@ const DEFAULT_DIRECTION = { DUE_DATE: 'ASC', PRIORITY: 'DESC', CREATED_AT: 'DESC
 export function readTaskQuery(searchParams) {
   const sort = searchParams.get('sort') || DEFAULT_SORT;
   return {
+    // Giữ nguyên khoảng trắng để ô tìm kiếm gõ được từ khóa nhiều chữ; server tự bỏ khoảng trắng đầu/cuối
     q: searchParams.get('q') || '',
     // Mặc định ẩn task đã hoàn thành (FR-02.2)
     showCompleted: searchParams.get('showCompleted') === 'true',
@@ -43,7 +44,7 @@ export function readTaskQuery(searchParams) {
 
 /** Có đang tìm hoặc lọc khác mặc định không (để hiện "Clear filters"). */
 export function hasActiveFilters(query) {
-  return Boolean(query.q || query.priority || query.due);
+  return Boolean(query.q.trim() || query.priority || query.due);
 }
 
 /**

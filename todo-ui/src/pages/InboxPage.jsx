@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { settingsApi } from '../api/settings';
 import { tasksApi } from '../api/tasks';
@@ -85,10 +85,15 @@ export default function InboxPage() {
   const change = (changes) => setSearchParams((prev) => withChanges(prev, changes));
   const setPage = (page) => change({ page });
 
+  // Tìm theo từng phím gõ: các request có thể về không theo thứ tự, chỉ nhận kết quả của request mới nhất
+  const latestRequest = useRef(0);
+
   const load = useCallback(async () => {
     const { page, ...filters } = readTaskQuery(new URLSearchParams(queryKey));
+    const requestId = ++latestRequest.current;
     try {
       const data = await tasksApi.list({ ...filters, page, size: PAGE_SIZE });
+      if (requestId !== latestRequest.current) return;
       // Trang hiện tại vừa trống (hoàn thành / xóa task cuối trang) -> lùi về trang trước
       if (data.items.length === 0 && page > 0) {
         setSearchParams((prev) => withChanges(prev, { page: page - 1 }));
@@ -97,7 +102,7 @@ export default function InboxPage() {
       setResult(data);
       setError('');
     } catch (err) {
-      setError(err.message);
+      if (requestId === latestRequest.current) setError(err.message);
     }
   }, [queryKey, setSearchParams]);
 
@@ -179,10 +184,10 @@ export default function InboxPage() {
         </button>
       </div>
 
-      {query.q && (
+      {query.q.trim() && (
         <div className="search-banner">
           <span>
-            Results for <strong>"{query.q}"</strong>
+            Results for <strong>"{query.q.trim()}"</strong>
           </span>
           <button type="button" className="btn btn-secondary" onClick={() => change({ q: '' })}>
             Clear search
