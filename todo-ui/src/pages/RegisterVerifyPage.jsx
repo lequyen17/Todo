@@ -1,6 +1,7 @@
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { authApi } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
+import { HOME_PATH } from '../auth/RouteGuards';
 import { AuthCard } from '../components/Form';
 import { OtpForm } from '../components/OtpForm';
 import { clearPendingRegisterEmail, loadPendingRegisterEmail } from './flowStorage';
@@ -16,7 +17,7 @@ export default function RegisterVerifyPage() {
     const tokens = await authApi.verifyRegister(email, otp);
     clearPendingRegisterEmail();
     await signIn(tokens);
-    navigate('/profile', { replace: true });
+    navigate(HOME_PATH, { replace: true });
   };
 
   const resend = () => authApi.resendRegisterOtp(email);

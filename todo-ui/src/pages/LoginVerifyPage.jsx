@@ -1,6 +1,7 @@
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { authApi } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
+import { HOME_PATH } from '../auth/RouteGuards';
 import { AuthCard } from '../components/Form';
 import { OtpForm } from '../components/OtpForm';
 import { clearLoginChallenge, loadLoginChallenge } from './flowStorage';
@@ -16,7 +17,7 @@ export default function LoginVerifyPage() {
     const tokens = await authApi.verifyLogin(challenge.challengeId, otp);
     clearLoginChallenge();
     await signIn(tokens);
-    navigate('/profile', { replace: true });
+    navigate(HOME_PATH, { replace: true });
   };
 
   const resend = () => authApi.resendLoginOtp(challenge.challengeId);

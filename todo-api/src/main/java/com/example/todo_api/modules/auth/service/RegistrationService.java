@@ -13,6 +13,8 @@ import com.example.todo_api.infrastructure.email.MailService;
 import com.example.todo_api.modules.auth.AuthErrorCode;
 import com.example.todo_api.modules.auth.dto.RegisterRequest;
 import com.example.todo_api.modules.auth.session.AuthSession;
+import com.example.todo_api.modules.settings.entity.UserSettings;
+import com.example.todo_api.modules.settings.repository.UserSettingsRepository;
 import com.example.todo_api.modules.users.entity.User;
 import com.example.todo_api.modules.users.repository.UserRepository;
 
@@ -26,16 +28,18 @@ public class RegistrationService {
     private final MailService mailService;
     private final RateLimiter rateLimiter;
     private final SessionService sessionService;
+    private final UserSettingsRepository settingsRepository;
 
     public RegistrationService(UserRepository userRepository, PasswordEncoder passwordEncoder,
             OtpService otpService, MailService mailService, RateLimiter rateLimiter,
-            SessionService sessionService) {
+            SessionService sessionService, UserSettingsRepository settingsRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.otpService = otpService;
         this.mailService = mailService;
         this.rateLimiter = rateLimiter;
         this.sessionService = sessionService;
+        this.settingsRepository = settingsRepository;
     }
 
     public void register(RegisterRequest req, String ip) {
@@ -80,6 +84,7 @@ public class RegistrationService {
         User user = User.registerWithPassword(email, pending.get("display_name"), pending.get("password"), now);
         user.recordLogin(now);
         userRepository.save(user);
+        settingsRepository.save(UserSettings.defaultsFor(user.getId()));
         return sessionService.start(user, now);
     }
 }

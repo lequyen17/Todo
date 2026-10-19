@@ -15,6 +15,8 @@ import com.example.todo_api.modules.auth.dto.GoogleConfigResponse;
 import com.example.todo_api.modules.auth.entity.UserIdentity;
 import com.example.todo_api.modules.auth.repository.UserIdentityRepository;
 import com.example.todo_api.modules.auth.session.AuthSession;
+import com.example.todo_api.modules.settings.entity.UserSettings;
+import com.example.todo_api.modules.settings.repository.UserSettingsRepository;
 import com.example.todo_api.modules.users.entity.User;
 import com.example.todo_api.modules.users.repository.UserRepository;
 
@@ -28,16 +30,18 @@ public class GoogleAuthService {
     private final RateLimiter rateLimiter;
     private final SessionService sessionService;
     private final AppProperties props;
+    private final UserSettingsRepository settingsRepository;
 
     public GoogleAuthService(GoogleTokenVerifier googleVerifier, UserRepository userRepository,
             UserIdentityRepository identityRepository, RateLimiter rateLimiter, SessionService sessionService,
-            AppProperties props) {
+            AppProperties props, UserSettingsRepository settingsRepository) {
         this.googleVerifier = googleVerifier;
         this.userRepository = userRepository;
         this.identityRepository = identityRepository;
         this.rateLimiter = rateLimiter;
         this.sessionService = sessionService;
         this.props = props;
+        this.settingsRepository = settingsRepository;
     }
 
     /**
@@ -77,6 +81,7 @@ public class GoogleAuthService {
         User user = userRepository.findByEmail(email).orElse(null);
         if (user == null) {
             user = userRepository.save(User.registerWithGoogle(email, profile.name(), now));
+            settingsRepository.save(UserSettings.defaultsFor(user.getId()));
         } else {
             if (identityRepository.existsByUserIdAndProvider(user.getId(), UserIdentity.Provider.GOOGLE)) {
                 throw new ApiException(AuthErrorCode.GOOGLE_ACCOUNT_MISMATCH);

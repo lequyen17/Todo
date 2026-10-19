@@ -1,10 +1,6 @@
-function initials(name = '') {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(-2)
-    .map((part) => part[0].toUpperCase())
-    .join('');
+/** Chưa có ảnh: chữ cái đầu của display name (FR-05.1, vd. "Huy" -> "H"). */
+function initial(name = '') {
+  return name.trim().charAt(0).toUpperCase();
 }
 
 export function Avatar({ user, size = 36 }) {
@@ -14,7 +10,7 @@ export function Avatar({ user, size = 36 }) {
   }
   return (
     <span className="avatar avatar-fallback" style={style} aria-hidden="true">
-      {initials(user.displayName)}
+      {initial(user.displayName)}
     </span>
   );
 }

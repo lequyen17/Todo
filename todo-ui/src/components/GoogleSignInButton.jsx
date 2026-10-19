@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
+import { HOME_PATH } from '../auth/RouteGuards';
 import { Alert } from './Form';
 
 const GSI_SRC = 'https://accounts.google.com/gsi/client';
@@ -74,7 +75,7 @@ export default function GoogleSignInButton({ text = 'signin_with' }) {
       try {
         const tokens = await authApi.loginWithGoogle(credential);
         await signIn(tokens);
-        navigate('/profile', { replace: true });
+        navigate(HOME_PATH, { replace: true });
       } catch (err) {
         if (active) {
           setError(err.message);

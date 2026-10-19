@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { authApi } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
+import { HOME_PATH } from '../auth/RouteGuards';
 import { Alert, AuthCard, Field } from '../components/Form';
 import GoogleSignInButton from '../components/GoogleSignInButton';
 import { useForm } from '../hooks/useForm';
@@ -19,7 +20,7 @@ export default function LoginPage() {
     } else {
       // Server tắt OTP đăng nhập (LOGIN_OTP_ENABLED=false) -> nhận token luôn
       await signIn(res.tokens);
-      navigate('/profile', { replace: true });
+      navigate(HOME_PATH, { replace: true });
     }
   };
 

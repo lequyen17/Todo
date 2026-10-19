@@ -53,14 +53,14 @@ export function UserMenu() {
             </div>
           </div>
           <NavLink to="/profile" className="user-menu-item" role="menuitem">
-            <UserIcon /> Profile
+            <UserIcon /> View profile
           </NavLink>
           <NavLink to="/settings" className="user-menu-item" role="menuitem">
             <SettingsIcon /> Settings
           </NavLink>
           <div className="user-menu-divider" />
           <button type="button" className="user-menu-item user-menu-item-danger" role="menuitem" onClick={signOut}>
-            <LogoutIcon /> Sign out
+            <LogoutIcon /> Log out
           </button>
         </div>
       )}
