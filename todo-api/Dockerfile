@@ -5,7 +5,7 @@ COPY pom.xml .
 # Cache ~/.m2 giữa các lần build: đổi pom.xml chỉ tải thêm thư viện mới, không tải lại tất cả
 RUN --mount=type=cache,target=/root/.m2 mvn -B -q dependency:go-offline
 COPY src ./src
-RUN --mount=type=cache,target=/root/.m2 mvn -B -q package -DskipTests
+RUN --mount=type=cache,target=/root/.m2 mvn -B package -DskipTests
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app

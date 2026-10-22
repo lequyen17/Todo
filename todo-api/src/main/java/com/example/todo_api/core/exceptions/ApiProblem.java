@@ -8,7 +8,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 
-import com.example.todo_api.core.web.TraceIdFilter;
+
 
 /**
  * Body lỗi chuẩn RFC 9457 (application/problem+json):
@@ -40,10 +40,7 @@ public final class ApiProblem {
     /** Thêm code + traceId; dùng cho cả ProblemDetail do Spring tự tạo (404, 405, 415...). */
     public static void decorate(ProblemDetail problem, String code) {
         problem.setProperty("code", code);
-        String traceId = MDC.get(TraceIdFilter.MDC_KEY);
-        if (traceId != null) {
-            problem.setProperty("traceId", traceId);
-        }
+// traceId handling removed
     }
 
     /** Lỗi do framework sinh ra không có ErrorCode riêng: dùng tên HTTP status (NOT_FOUND, METHOD_NOT_ALLOWED...). */
